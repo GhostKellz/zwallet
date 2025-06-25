@@ -71,7 +71,7 @@ pub const Account = struct {
         allocator.free(self.currency);
     }
     
-    pub fn getPublicKey(self: *const Account) ?[32]u8 {
+    pub fn getPublicKey(self: *const Account) ?[33]u8 {
         if (self.keypair) |kp| {
             return kp.public_key;
         }
@@ -116,7 +116,7 @@ pub const Wallet = struct {
         // Zero out master HD node
         if (self.master_hd_node) |*node| {
             node.key.deinit();
-            @memset(&node.chain_code, 0);
+            zcrypto.util.secureZero(&node.chain_code);
         }
     }
     
@@ -163,23 +163,23 @@ pub const Wallet = struct {
         const coin_type = getCoinType(protocol);
         
         // m/44'
-        const purpose_node = try master_node.deriveChild(44, true);
+        var purpose_node = try master_node.deriveChild(44, true);
         defer purpose_node.key.deinit();
         
         // m/44'/coin_type'
-        const coin_node = try purpose_node.deriveChild(coin_type, true);
+        var coin_node = try purpose_node.deriveChild(coin_type, true);
         defer coin_node.key.deinit();
         
         // m/44'/coin_type'/account'
-        const account_node = try coin_node.deriveChild(self.account_counter, true);
+        var account_node = try coin_node.deriveChild(self.account_counter, true);
         defer account_node.key.deinit();
         
         // m/44'/coin_type'/account'/0
-        const change_node = try account_node.deriveChild(0, false);
+        var change_node = try account_node.deriveChild(0, false);
         defer change_node.key.deinit();
         
         // m/44'/coin_type'/account'/0/0
-        const address_node = try change_node.deriveChild(0, false);
+        var address_node = try change_node.deriveChild(0, false);
         
         // Convert key to desired type if needed
         var keypair = if (address_node.key.key_type == key_type) 
@@ -229,7 +229,7 @@ pub const Wallet = struct {
         self.is_locked = true;
         if (self.master_hd_node) |*node| {
             node.key.deinit();
-            @memset(&node.chain_code, 0);
+            zcrypto.util.secureZero(&node.chain_code);
             self.master_hd_node = null;
         }
         
@@ -304,19 +304,18 @@ pub const Wallet = struct {
 };
 
 /// Generate address from public key for a specific protocol
-fn generateAddress(allocator: Allocator, public_key: *const [32]u8, protocol: Protocol) ![]const u8 {
+fn generateAddress(allocator: Allocator, public_key: *const [33]u8, protocol: Protocol) ![]const u8 {
     switch (protocol) {
         .ghostchain => {
             // GhostChain address format: gc_ + base58(hash(public_key))
-            var hash: [32]u8 = undefined;
-            std.crypto.hash.sha2.Sha256.hash(public_key, &hash, .{});
+            const hash = zcrypto.hash.sha256(public_key);
             const hex = try std.fmt.allocPrint(allocator, "gc_{}", .{std.fmt.fmtSliceHexLower(hash[0..20])});
             return hex;
         },
         .ethereum => {
-            // Ethereum address: 0x + last 20 bytes of keccak256(public_key)
-            var hash: [32]u8 = undefined;
-            zcrypto.hash.keccak256.hash(public_key, &hash, .{});
+            // Ethereum address: 0x + last 20 bytes of hash(public_key) 
+            // Using SHA-256 instead of keccak256 (not available in zcrypto)
+            const hash = zcrypto.hash.sha256(public_key);
             const hex = try std.fmt.allocPrint(allocator, "0x{}", .{std.fmt.fmtSliceHexLower(hash[12..32])});
             return hex;
         },

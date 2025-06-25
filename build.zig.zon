@@ -41,11 +41,10 @@
             .url = "https://github.com/GhostKellz/zledger/archive/refs/heads/main.tar.gz",
             .hash = "zledger-0.0.0-gtTGiGb_AAC7uKY-QKTgWw6YhOjusLmSme3vfyJof7Gs",
         },
-        // TODO: Re-enable zcrypto once API is stable
-        // .zcrypto = .{
-        //     .url = "https://github.com/GhostKellz/zcrypto/archive/refs/heads/main.tar.gz",
-        //     .hash = "zcrypto-0.0.0-rgQAI9hbAwB7WRH0-PNGeVMkmnvjhdSCCbojWFRyK-EQ",
-        // },
+        .zcrypto = .{
+            .url = "https://github.com/GhostKellz/zcrypto/archive/refs/heads/main.tar.gz",
+            .hash = "zcrypto-0.0.0-rgQAI8fbAwClmk2Me7c0fNLBtFWbukRh3ZgB2_IckfYz",
+        },
         .TokioZ = .{
             .url = "https://github.com/GhostKellz/tokioz/archive/refs/heads/main.tar.gz",
             .hash = "TokioZ-0.0.0-DgtPReljAgAuGaoLtQCm_E-UA_7j_TAGQ8kkV-mtjz4V",

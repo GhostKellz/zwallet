@@ -2,8 +2,7 @@
 //! Provides JSON keystore format with Argon2 key derivation
 
 const std = @import("std");
-// TODO: Re-enable zcrypto when API is stable
-// const zcrypto = @import("zcrypto");
+const zcrypto = @import("zcrypto");
 const Allocator = std.mem.Allocator;
 const crypto = @import("crypto.zig");
 
@@ -44,12 +43,11 @@ pub const Keystore = struct {
     
     pub fn init(allocator: Allocator) Keystore {
         var id: [16]u8 = undefined;
-        std.crypto.random.bytes(&id);
+        zcrypto.rand.fillBytes(&id);
         
-        var salt: [32]u8 = undefined;
+        const salt = zcrypto.rand.generateSalt(32);
         var iv: [16]u8 = undefined;
-        std.crypto.random.bytes(&salt);
-        std.crypto.random.bytes(&iv);
+        zcrypto.rand.fillBytes(&iv);
         
         return Keystore{
             .version = .v3,
@@ -74,8 +72,8 @@ pub const Keystore = struct {
             self.allocator.free(addr);
         }
         if (self.ciphertext.len > 0) {
-            // Zero out ciphertext before freeing
-            @memset(@constCast(self.ciphertext), 0);
+            // Securely zero out ciphertext before freeing
+            zcrypto.util.secureZero(@constCast(self.ciphertext));
             self.allocator.free(@constCast(self.ciphertext));
         }
     }
@@ -293,84 +291,25 @@ pub const Keystore = struct {
     // Helper functions
     
     fn deriveKey(self: *const Keystore, password: []const u8) ![32]u8 {
-        // TODO: Use Argon2id when zcrypto supports it
-        // For now, use PBKDF2 from std.crypto as placeholder
-        var derived_key: [32]u8 = undefined;
-        
-        try std.crypto.pwhash.pbkdf2(
-            &derived_key,
-            password,
-            &self.crypto_params.salt,
-            self.crypto_params.iterations,
-            std.crypto.auth.hmac.sha2.HmacSha256,
-        );
-        
-        return derived_key;
+        // Use Argon2id from zcrypto for secure password derivation
+        return try zcrypto.kdf.argon2id(self.allocator, password, self.crypto_params.salt, 32);
     }
     
     fn encrypt(self: *const Keystore, plaintext: []const u8, key: *const [32]u8) ![]u8 {
-        // TODO: Use AES-256-GCM when zcrypto supports it  
-        // For now, use ChaCha20Poly1305 from std.crypto as placeholder
-        const tag_length = 16;
-        
-        // Allocate space for ciphertext + auth tag
-        const ciphertext = try self.allocator.alloc(u8, plaintext.len + tag_length);
-        
-        // Encrypt using ChaCha20Poly1305
-        const cipher_part = ciphertext[0..plaintext.len];
-        const tag_part = ciphertext[plaintext.len..];
-        
-        std.crypto.aead.chacha_poly.ChaCha20Poly1305.encrypt(
-            cipher_part,
-            tag_part[0..16].*,
-            plaintext,
-            &[_]u8{}, // No additional data
-            self.crypto_params.iv[0..12].*, // ChaCha20 uses 12-byte nonce
-            key.*,
-        );
-        
-        return ciphertext;
+        // Use zcrypto's simplified AES-GCM API
+        return try zcrypto.sym.encryptAesGcm(self.allocator, plaintext, key);
     }
     
     fn decrypt(self: *const Keystore, ciphertext: []const u8, key: *const [32]u8) ![]u8 {
-        // TODO: Use AES-256-GCM when zcrypto supports it
-        // For now, use ChaCha20Poly1305 from std.crypto as placeholder
-        const tag_length = 16;
-        
-        if (ciphertext.len < tag_length) {
-            return KeystoreError.CorruptedKeystore;
-        }
-        
-        const plaintext_len = ciphertext.len - tag_length;
-        const plaintext = try self.allocator.alloc(u8, plaintext_len);
-        errdefer self.allocator.free(plaintext);
-        
-        // Decrypt and verify using ChaCha20Poly1305
-        const cipher_part = ciphertext[0..plaintext_len];
-        const tag_part = ciphertext[plaintext_len..];
-        
-        std.crypto.aead.chacha_poly.ChaCha20Poly1305.decrypt(
-            plaintext,
-            cipher_part,
-            tag_part[0..16].*,
-            &[_]u8{}, // No additional data
-            self.crypto_params.iv[0..12].*, // ChaCha20 uses 12-byte nonce
-            key.*,
-        ) catch return KeystoreError.DecryptionFailed;
-        
-        return plaintext;
+        // Use zcrypto's simplified AES-GCM API
+        return zcrypto.sym.decryptAesGcm(self.allocator, ciphertext, key) catch KeystoreError.DecryptionFailed;
     }
     
     fn calculateMac(self: *const Keystore, key: *const [32]u8, data: []const u8) ![32]u8 {
         _ = self;
         
-        // Use HMAC-SHA256 from std.crypto
-        var mac: [32]u8 = undefined;
-        var hmac = std.crypto.auth.hmac.sha2.HmacSha256.init(key);
-        hmac.update(data);
-        hmac.final(&mac);
-        
-        return mac;
+        // Use zcrypto's HMAC-SHA256
+        return zcrypto.auth.hmac.sha256(data, key.*);
     }
     
     fn serializeKeypair(self: *const Keystore, keypair: *const crypto.KeyPair) ![]u8 {

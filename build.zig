@@ -15,8 +15,7 @@ pub fn build(b: *std.Build) void {
     // TODO: Re-enable zsig once dependency conflict is resolved
     // const zsig = b.dependency("zsig", .{ .target = target, .optimize = optimize });
     const zledger = b.dependency("zledger", .{ .target = target, .optimize = optimize });
-    // TODO: Re-enable zcrypto once API is stable
-    // const zcrypto = b.dependency("zcrypto", .{ .target = target, .optimize = optimize });
+    const zcrypto = b.dependency("zcrypto", .{ .target = target, .optimize = optimize });
     const tokioz = b.dependency("TokioZ", .{ .target = target, .optimize = optimize });
     // const wraith = b.dependency("wraith", .{ .target = target, .optimize = optimize });
 
@@ -28,8 +27,7 @@ pub fn build(b: *std.Build) void {
             // TODO: Re-enable zsig once dependency conflict is resolved
             // .{ .name = "zsig", .module = zsig.module("zsig") },
             .{ .name = "zledger", .module = zledger.module("zledger") },
-            // TODO: Re-enable zcrypto once API is stable
-            // .{ .name = "zcrypto", .module = zcrypto.module("zcrypto") },
+            .{ .name = "zcrypto", .module = zcrypto.module("zcrypto") },
             .{ .name = "tokioz", .module = tokioz.module("TokioZ") },
         },
     });
@@ -45,8 +43,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "zwallet", .module = mod },
                 // TODO: Re-enable zsig once dependency conflict is resolved
                 // .{ .name = "zsig", .module = zsig.module("zsig") },
-                // TODO: Re-enable zcrypto once API is stable
-                // .{ .name = "zcrypto", .module = zcrypto.module("zcrypto") },
+                .{ .name = "zcrypto", .module = zcrypto.module("zcrypto") },
                 .{ .name = "tokioz", .module = tokioz.module("TokioZ") },
             },
         }),
