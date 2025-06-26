@@ -1,25 +1,46 @@
-//! Zwallet - A Secure, Programmable Wallet for Zig
+//! Zwallet - A Secure, Programmable Wallet for Zig with RealID Integration
 //! Core wallet functionality with multi-protocol support
 
 const std = @import("std");
 
 // Re-export core modules
-pub const wallet = @import("core/wallet.zig");
+pub const wallet = @import("core/wallet_realid.zig");
+pub const tx = @import("core/tx.zig");
+pub const qid = @import("core/qid.zig");
+pub const ffi = @import("core/ffi.zig");
 pub const transaction = @import("protocol/transaction.zig");
 pub const identity = @import("identity/resolver.zig");
 pub const bridge = @import("bridge/api.zig");
 pub const wraith_bridge = @import("bridge/wraith_bridge.zig");
 pub const cli = @import("cli/commands.zig");
+pub const ghostd = @import("protocol/ghostd_integration.zig");
+pub const crypto = @import("utils/crypto.zig");
 
 // Re-export key types
 pub const Wallet = wallet.Wallet;
 pub const Account = wallet.Account;
-pub const Transaction = transaction.Transaction;
+pub const Transaction = tx.Transaction;
+pub const QID = qid.QID;
 pub const Identity = identity.Identity;
 pub const CLI = cli.CLI;
 pub const Bridge = bridge.Bridge;
 pub const WraithBridge = wraith_bridge.WraithBridge;
 pub const WraithConfig = wraith_bridge.WraithConfig;
+
+// v0.3.0 Enhanced Types
+pub const GhostdClient = ghostd.GhostdClient;
+pub const GhostWallet = ghostd.GhostWallet;
+pub const WalletFactory = wallet.WalletFactory;
+pub const WalletStats = wallet.WalletStats;
+pub const KeyPair = crypto.KeyPair;
+pub const Batch = crypto.Batch;
+
+// Re-export FFI types for Rust integration
+pub const ZWalletContext = ffi.ZWalletContext;
+pub const WalletAccount = ffi.WalletAccount;
+pub const RealIdContext = ffi.RealIdContext;
+pub const ZidIdentity = ffi.ZidIdentity;
+pub const SignatureResult = ffi.SignatureResult;
 
 // Re-export enums
 pub const WalletMode = wallet.WalletMode;
@@ -33,7 +54,7 @@ pub const IdentityError = identity.IdentityError;
 pub const BridgeError = bridge.BridgeError;
 
 /// Library version
-pub const version = "0.1.0";
+pub const version = "0.3.0";
 
 /// Initialize a new wallet
 pub fn createWallet(allocator: std.mem.Allocator, mode: WalletMode) !Wallet {
@@ -49,7 +70,7 @@ pub fn importWallet(allocator: std.mem.Allocator, mnemonic: []const u8, password
 pub fn resolveIdentity(allocator: std.mem.Allocator, domain: []const u8) ![]const u8 {
     var resolver = identity.IdentityResolver.init(allocator);
     defer resolver.deinit();
-    
+
     return resolver.resolve(domain);
 }
 
@@ -67,7 +88,7 @@ pub const keystore = @import("utils/keystore.zig");
 test "wallet creation" {
     var w = try createWallet(std.testing.allocator, .hybrid);
     defer w.deinit();
-    
+
     try std.testing.expect(!w.is_locked);
 }
 
@@ -75,6 +96,6 @@ test "identity resolution" {
     const domain = "test.eth";
     const address = try resolveIdentity(std.testing.allocator, domain);
     defer std.testing.allocator.free(address);
-    
+
     try std.testing.expect(address.len > 0);
 }

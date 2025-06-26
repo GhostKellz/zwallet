@@ -12,9 +12,9 @@ pub const WraithBridge = struct {
     allocator: std.mem.Allocator,
     wallet: *zwallet.Wallet,
     port: u16,
-    
+
     const Self = @This();
-    
+
     pub fn init(allocator: std.mem.Allocator, wallet: *zwallet.Wallet, port: u16) Self {
         return Self{
             .allocator = allocator,
@@ -22,10 +22,10 @@ pub const WraithBridge = struct {
             .port = port,
         };
     }
-    
+
     pub fn start(self: *Self) !void {
         std.log.info("Starting Wraith-enhanced Web3 bridge on port {}", .{self.port});
-        
+
         // TODO: When Wraith is available, use this configuration:
         // var server = try wraith.WraithServer.init(self.allocator, .{
         //     .bind_address = "::",
@@ -57,7 +57,7 @@ pub const WraithBridge = struct {
         //         },
         //     },
         // });
-        
+
         // // Add Web3 API routes
         // try server.router.addRoute(.{
         //     .path = "/api/v1/wallet/create",
@@ -76,7 +76,7 @@ pub const WraithBridge = struct {
         //         }),
         //     },
         // });
-        
+
         // try server.router.addRoute(.{
         //     .path = "/api/v1/transaction/send",
         //     .method = .POST,
@@ -89,7 +89,7 @@ pub const WraithBridge = struct {
         //         }),
         //     },
         // });
-        
+
         // try server.router.addRoute(.{
         //     .path = "/api/v1/identity/resolve/*",
         //     .method = .GET,
@@ -100,14 +100,14 @@ pub const WraithBridge = struct {
         //         .vary_on = &[_][]const u8{"Accept", "User-Agent"},
         //     },
         // });
-        
+
         // // WebSocket for real-time transaction updates
         // try server.router.addWebSocket(.{
         //     .path = "/ws/transactions",
         //     .handler = handleTransactionUpdates,
         //     .auth_required = true,
         // });
-        
+
         // // Serve static wallet frontend files
         // try server.router.addStatic(.{
         //     .path = "/",
@@ -115,20 +115,20 @@ pub const WraithBridge = struct {
         //     .cache_control = "public, max-age=3600",
         //     .fallback = "/index.html", // SPA support
         // });
-        
+
         // try server.start();
-        
+
         // For now, use a simple mock server
         std.log.info("Mock Wraith bridge server started - waiting for Wraith integration");
-        
+
         // Simulate server running
         while (true) {
             std.time.sleep(1000000000); // 1 second
         }
     }
-    
+
     // Handler functions that would be used with Wraith
-    
+
     fn handleWalletCreate(self: *Self, ctx: anytype) !void {
         _ = self;
         _ = ctx;
@@ -137,21 +137,21 @@ pub const WraithBridge = struct {
         // const response = try self.createWallet(body);
         // try ctx.response.writeJson(response);
     }
-    
+
     fn handleTransactionSend(self: *Self, ctx: anytype) !void {
         _ = self;
         _ = ctx;
         // Implementation would handle transaction sending
         // with proper validation and security
     }
-    
+
     fn handleIdentityResolve(self: *Self, ctx: anytype) !void {
         _ = self;
         _ = ctx;
         // Implementation would resolve ENS/Unstoppable/etc domains
         // with caching via Wraith's built-in cache system
     }
-    
+
     fn handleTransactionUpdates(self: *Self, ws: anytype) !void {
         _ = self;
         _ = ws;
@@ -168,14 +168,14 @@ pub const WraithConfig = struct {
     cors_origins: []const []const u8 = &[_][]const u8{},
     rate_limit_rpm: u32 = 100,
     cache_ttl_seconds: u32 = 300,
-    
+
     pub const Security = struct {
         require_auth: bool = true,
         api_key_header: []const u8 = "X-API-Key",
         jwt_secret: ?[]const u8 = null,
         enable_csrf: bool = true,
     };
-    
+
     pub const Performance = struct {
         enable_compression: bool = true,
         max_request_size: u32 = 1024 * 1024, // 1MB
@@ -192,18 +192,18 @@ test "wraith bridge creation" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
-    
+
     var wallet = try zwallet.Wallet.init(allocator);
     defer wallet.deinit();
-    
+
     const config = WraithConfig{
         .port = 8443,
         .enable_http3 = true,
     };
-    
+
     const bridge = try createWraithBridge(allocator, &wallet, config);
     _ = bridge;
-    
+
     // Test configuration
     try std.testing.expect(config.port == 8443);
     try std.testing.expect(config.enable_http3);

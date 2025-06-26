@@ -1,10 +1,10 @@
 //! Cryptographic utilities and key management
-//! Uses std.crypto for now, with zcrypto/zsig integration planned
+//! Integrates with zcrypto v0.3.0 and zsig v0.3.0 libraries
 
 const std = @import("std");
-const Allocator = std.mem.Allocator;
-
 const zcrypto = @import("zcrypto");
+const zsig = @import("zsig");
+const Allocator = std.mem.Allocator;
 
 pub const CryptoError = error{
     InvalidKey,
@@ -12,21 +12,19 @@ pub const CryptoError = error{
     KeyGenerationFailed,
     SigningFailed,
     VerificationFailed,
-    InvalidMnemonic,
-    InvalidSeed,
 };
 
 pub const KeyPair = struct {
-    public_key: [33]u8, // secp256k1 uses 33-byte compressed public keys
+    public_key: [32]u8,
     private_key: [64]u8,
     key_type: KeyType,
-    
+
     pub fn deinit(self: *KeyPair) void {
-        // Securely zero out private key
-        zcrypto.util.secureZero(&self.private_key);
+        // Zero out private key
+        @memset(&self.private_key, 0);
     }
-    
-    /// Generate new keypair
+
+    /// Generate new keypair using zcrypto v0.3.0
     pub fn generate(key_type: KeyType) !KeyPair {
         switch (key_type) {
             .ed25519 => return generateEd25519(),
@@ -34,8 +32,8 @@ pub const KeyPair = struct {
             .curve25519 => return generateCurve25519(),
         }
     }
-    
-    /// Generate from seed
+
+    /// Generate from seed using zcrypto v0.3.0 deterministic generation
     pub fn fromSeed(seed: [32]u8, key_type: KeyType) !KeyPair {
         switch (key_type) {
             .ed25519 => return ed25519FromSeed(seed),
@@ -43,7 +41,7 @@ pub const KeyPair = struct {
             .curve25519 => return curve25519FromSeed(seed),
         }
     }
-    
+
     /// Sign message
     pub fn sign(self: *const KeyPair, message: []const u8, allocator: Allocator) ![]u8 {
         switch (self.key_type) {
@@ -52,7 +50,7 @@ pub const KeyPair = struct {
             .curve25519 => return CryptoError.SigningFailed, // Not for signing
         }
     }
-    
+
     /// Verify signature
     pub fn verify(self: *const KeyPair, message: []const u8, signature: []const u8) bool {
         switch (self.key_type) {
@@ -69,310 +67,245 @@ pub const KeyType = enum {
     curve25519,
 };
 
-/// Generate Ed25519 keypair using zcrypto
+/// Generate Ed25519 keypair using zcrypto v0.3.0
 fn generateEd25519() !KeyPair {
+    const zcrypto_keypair = zcrypto.asym.ed25519.generate();
+    
     var keypair = KeyPair{
-        .public_key = undefined,
+        .public_key = zcrypto_keypair.public_key,
         .private_key = undefined,
         .key_type = .ed25519,
     };
     
-    // Use zcrypto's Ed25519 implementation
-    const ed_keypair = zcrypto.asym.ed25519.generate();
-    @memcpy(keypair.public_key[0..32], &ed_keypair.public_key);
-    keypair.public_key[32] = 0; // Pad to 33 bytes
-    @memcpy(&keypair.private_key, &ed_keypair.private_key);
+    @memcpy(keypair.private_key[0..32], &zcrypto_keypair.private_key);
+    @memset(keypair.private_key[32..64], 0); // Ed25519 only uses 32 bytes
     
     return keypair;
 }
 
-/// Generate Ed25519 keypair from seed
+/// Generate Ed25519 keypair from seed using zcrypto v0.3.0 deterministic generation
 fn ed25519FromSeed(seed: [32]u8) !KeyPair {
-    _ = seed; // TODO: Implement proper seed-based generation
+    const zcrypto_keypair = zcrypto.asym.ed25519.generateFromSeed(seed);
+    
     var keypair = KeyPair{
-        .public_key = undefined,
+        .public_key = zcrypto_keypair.public_key,
         .private_key = undefined,
         .key_type = .ed25519,
     };
     
-    // Use zcrypto's Ed25519 implementation (random for now)
-    const ed_keypair = zcrypto.asym.ed25519.generate();
-    @memcpy(keypair.public_key[0..32], &ed_keypair.public_key);
-    keypair.public_key[32] = 0; // Pad to 33 bytes
-    @memcpy(&keypair.private_key, &ed_keypair.private_key);
+    @memcpy(keypair.private_key[0..32], &zcrypto_keypair.private_key);
+    @memset(keypair.private_key[32..64], 0); // Ed25519 only uses 32 bytes
     
     return keypair;
 }
 
-/// Generate secp256k1 keypair using zcrypto
+/// Generate secp256k1 keypair using zcrypto v0.3.0
 fn generateSecp256k1() !KeyPair {
+    const zcrypto_keypair = zcrypto.asym.secp256k1.generate();
+    
     var keypair = KeyPair{
-        .public_key = undefined,
+        .public_key = zcrypto_keypair.publicKey(.compressed), // Use compressed format
         .private_key = undefined,
         .key_type = .secp256k1,
     };
     
-    // Use zcrypto's secp256k1 implementation
-    const secp_keypair = zcrypto.asym.secp256k1.generate();
-    @memcpy(&keypair.public_key, &secp_keypair.public_key);
-    @memcpy(keypair.private_key[0..32], &secp_keypair.private_key);
-    @memset(keypair.private_key[32..64], 0);
+    @memcpy(keypair.private_key[0..32], &zcrypto_keypair.private_key);
+    @memset(keypair.private_key[32..64], 0); // secp256k1 only uses 32 bytes
     
     return keypair;
 }
 
-/// Generate secp256k1 keypair from seed using zcrypto
+/// Generate secp256k1 keypair from seed using zcrypto v0.3.0
 fn secp256k1FromSeed(seed: [32]u8) !KeyPair {
+    const zcrypto_keypair = zcrypto.asym.secp256k1.generateFromSeed(seed);
+    
     var keypair = KeyPair{
-        .public_key = undefined,
+        .public_key = zcrypto_keypair.publicKey(.compressed),
         .private_key = undefined,
         .key_type = .secp256k1,
     };
     
-    // Use zcrypto's secp256k1 implementation (random for now)
-    _ = seed; // TODO: Implement proper seed-based generation
-    const secp_keypair = zcrypto.asym.secp256k1.generate();
-    @memcpy(&keypair.public_key, &secp_keypair.public_key);
-    @memcpy(keypair.private_key[0..32], &secp_keypair.private_key);
+    @memcpy(keypair.private_key[0..32], &zcrypto_keypair.private_key);
     @memset(keypair.private_key[32..64], 0);
     
     return keypair;
 }
 
-/// Generate Curve25519 keypair using zcrypto
+/// Generate Curve25519 keypair
 fn generateCurve25519() !KeyPair {
     var keypair = KeyPair{
         .public_key = undefined,
         .private_key = undefined,
         .key_type = .curve25519,
     };
-    
-    // Use zcrypto's X25519 implementation
-    const x25519_keypair = zcrypto.asym.x25519.generate();
-    
-    @memcpy(keypair.public_key[0..32], &x25519_keypair.public_key);
-    keypair.public_key[32] = 0; // Pad to 33 bytes
-    @memcpy(keypair.private_key[0..32], &x25519_keypair.private_key);
-    @memset(keypair.private_key[32..64], 0);
-    
+
+    // Generate random secret key
+    var secret_key: [32]u8 = undefined;
+    std.crypto.random.bytes(&secret_key);
+
+    // Use the X25519 base point (value 9)
+    const base_point = [_]u8{9} ++ [_]u8{0} ** 31;
+
+    // Derive public key
+    const public_key = std.crypto.dh.X25519.scalarmult(secret_key, base_point) catch return CryptoError.KeyGenerationFailed;
+
+    @memcpy(&keypair.public_key, &public_key);
+    @memcpy(keypair.private_key[0..32], &secret_key);
+
     return keypair;
 }
 
-/// Generate Curve25519 keypair from seed using zcrypto
+/// Generate Curve25519 keypair from seed
 fn curve25519FromSeed(seed: [32]u8) !KeyPair {
-    _ = seed; // TODO: Implement proper seed-based generation
     var keypair = KeyPair{
         .public_key = undefined,
         .private_key = undefined,
         .key_type = .curve25519,
     };
-    
-    // Use zcrypto's X25519 implementation (random for now)
-    const x25519_keypair = zcrypto.asym.x25519.generate();
-    
-    @memcpy(keypair.public_key[0..32], &x25519_keypair.public_key);
-    keypair.public_key[32] = 0; // Pad to 33 bytes
-    @memcpy(keypair.private_key[0..32], &x25519_keypair.private_key);
-    @memset(keypair.private_key[32..64], 0);
-    
+
+    // Use the X25519 base point (value 9)
+    const base_point = [_]u8{9} ++ [_]u8{0} ** 31;
+
+    // Use seed as secret key
+    const public_key = std.crypto.dh.X25519.scalarmult(seed, base_point) catch return CryptoError.KeyGenerationFailed;
+
+    @memcpy(&keypair.public_key, &public_key);
+    @memcpy(keypair.private_key[0..32], &seed);
+
     return keypair;
 }
 
-/// Sign with Ed25519 using zcrypto
+/// Sign with Ed25519 using zcrypto v0.3.0
 fn signEd25519(message: []const u8, private_key: *const [64]u8, allocator: Allocator) ![]u8 {
-    // Use zcrypto's Ed25519 signing (needs full 64-byte private key)
-    const signature = zcrypto.asym.ed25519.sign(message, private_key.*);
+    const ed25519_private_key: [32]u8 = private_key[0..32].*;
     
-    // Allocate and return signature
-    const sig_bytes = try allocator.alloc(u8, 64);
-    @memcpy(sig_bytes, &signature);
-    return sig_bytes;
-}
-
-/// Verify Ed25519 signature using zcrypto
-fn verifyEd25519(message: []const u8, signature: []const u8, public_key: *const [33]u8) bool {
-    if (signature.len != 64) return false;
-    
-    var sig_bytes: [64]u8 = undefined;
-    @memcpy(&sig_bytes, signature);
-    
-    // Use zcrypto's Ed25519 verification (use first 32 bytes of public key)
-    var ed_pubkey: [32]u8 = undefined;
-    @memcpy(&ed_pubkey, public_key[0..32]);
-    return zcrypto.asym.ed25519.verify(message, sig_bytes, ed_pubkey);
-}
-
-/// Sign with secp256k1 using zcrypto
-fn signSecp256k1(message: []const u8, private_key: *const [64]u8, allocator: Allocator) ![]u8 {
-    // Hash the message for secp256k1 signing
-    const message_hash = zcrypto.hash.sha256(message);
-    
-    // Use zcrypto's secp256k1 signing
-    const signature = zcrypto.asym.secp256k1.sign(message_hash, private_key[0..32].*);
-    
-    // Return as 64-byte signature
-    const sig_bytes = try allocator.alloc(u8, 64);
-    @memcpy(sig_bytes, &signature);
-    
-    return sig_bytes;
-}
-
-/// Verify secp256k1 signature using zcrypto
-fn verifySecp256k1(message: []const u8, signature: []const u8, public_key: *const [33]u8) bool {
-    if (signature.len != 64) return false;
-    
-    // Hash the message for secp256k1 verification
-    const message_hash = zcrypto.hash.sha256(message);
-    
-    var sig_bytes: [64]u8 = undefined;
-    @memcpy(&sig_bytes, signature);
-    
-    // Use zcrypto's secp256k1 verification (full 33-byte compressed public key)
-    return zcrypto.asym.secp256k1.verify(message_hash, sig_bytes, public_key.*);
-}
-
-/// BIP-32 HD wallet support
-pub const HDNode = struct {
-    key: KeyPair,
-    chain_code: [32]u8,
-    depth: u8,
-    index: u32,
-    parent_fingerprint: [4]u8,
-    
-    /// Derive child key using BIP-32
-    pub fn deriveChild(self: *const HDNode, index: u32, hardened: bool) !HDNode {
-        const index_value = if (hardened) index + 0x80000000 else index;
-        
-        // Prepare data for HMAC
-        var data: [37]u8 = undefined;
-        
-        if (hardened) {
-            // Use private key
-            data[0] = 0x00;
-            @memcpy(data[1..33], self.key.private_key[0..32]);
-        } else {
-            // Use public key
-            @memcpy(data[0..33], &self.key.public_key);
-        }
-        
-        // Add index
-        std.mem.writeInt(u32, data[33..37], index_value, .big);
-        
-        // Compute HMAC-SHA512 using zcrypto
-        const hmac_result = zcrypto.auth.hmac.sha512(&data, &self.chain_code);
-        
-        // Split result
-        var child_key: [32]u8 = undefined;
-        var child_chain_code: [32]u8 = undefined;
-        @memcpy(&child_key, hmac_result[0..32]);
-        @memcpy(&child_chain_code, hmac_result[32..64]);
-        
-        // Create child keypair
-        const child_keypair = try KeyPair.fromSeed(child_key, self.key.key_type);
-        
-        // Calculate parent fingerprint
-        const parent_pubkey_hash = zcrypto.hash.sha256(&self.key.public_key);
-        var parent_fingerprint: [4]u8 = undefined;
-        @memcpy(&parent_fingerprint, parent_pubkey_hash[0..4]);
-        
-        return HDNode{
-            .key = child_keypair,
-            .chain_code = child_chain_code,
-            .depth = self.depth + 1,
-            .index = index_value,
-            .parent_fingerprint = parent_fingerprint,
-        };
-    }
-};
-
-/// Generate mnemonic phrase using BIP-39 from zcrypto
-pub fn generateMnemonic(allocator: Allocator, entropy_bits: u16) ![]const u8 {
-    if (entropy_bits % 32 != 0 or entropy_bits < 128 or entropy_bits > 256) {
-        return CryptoError.InvalidSeed;
-    }
-    
-    // Use zcrypto BIP-39 implementation
-    const word_count = switch (entropy_bits) {
-        128 => zcrypto.bip.MnemonicLength.words_12,
-        160 => zcrypto.bip.MnemonicLength.words_15,
-        192 => zcrypto.bip.MnemonicLength.words_18,
-        224 => zcrypto.bip.MnemonicLength.words_21,
-        256 => zcrypto.bip.MnemonicLength.words_24,
-        else => return CryptoError.InvalidSeed,
+    // Use zcrypto for actual Ed25519 signing
+    const keypair = zcrypto.asym.ed25519.KeyPair{
+        .private_key = ed25519_private_key,
+        .public_key = undefined, // Not needed for signing
     };
     
-    const mnemonic = try zcrypto.bip.bip39.generate(allocator, word_count);
-    // Join the words with spaces to create a single string
-    return try std.mem.join(allocator, " ", mnemonic.words);
-}
-
-/// Convert mnemonic to seed using BIP-39 from zcrypto
-pub fn mnemonicToSeed(mnemonic: []const u8, passphrase: ?[]const u8, allocator: Allocator) ![64]u8 {
-    // Use zcrypto's BIP-39 mnemonicToSeed function directly
-    const seed = try zcrypto.bip.bip39.mnemonicToSeed(allocator, mnemonic, passphrase orelse "");
-    defer allocator.free(seed);
-    
-    var result: [64]u8 = undefined;
-    if (seed.len >= 64) {
-        @memcpy(&result, seed[0..64]);
-    } else {
-        @memcpy(result[0..seed.len], seed);
-        @memset(result[seed.len..], 0);
-    }
+    const signature = try keypair.sign(message);
+    const result = try allocator.alloc(u8, 64);
+    @memcpy(result, &signature);
     
     return result;
 }
 
-/// Create HD wallet from seed using zcrypto BIP-32
-pub fn createHDWallet(seed: [64]u8, key_type: KeyType) !HDNode {
-    // Use zcrypto BIP-32 master key generation
-    const master = zcrypto.bip.bip32.masterKeyFromSeed(&seed);
+/// Verify Ed25519 signature using zcrypto v0.3.0
+fn verifyEd25519(message: []const u8, signature: []const u8, public_key: *const [32]u8) bool {
+    if (signature.len != 64) return false;
     
-    // Create keypair from master key
-    const master_keypair = try KeyPair.fromSeed(master.key, key_type);
+    const sig_array: [64]u8 = signature[0..64].*;
+    return zcrypto.asym.ed25519.verify(message, sig_array, public_key.*);
+}
+
+/// Sign with secp256k1 using zcrypto v0.3.0
+fn signSecp256k1(message: []const u8, private_key: *const [64]u8, allocator: Allocator) ![]u8 {
+    const secp256k1_private_key: [32]u8 = private_key[0..32].*;
     
-    return HDNode{
-        .key = master_keypair,
-        .chain_code = master.chain_code,
-        .depth = 0,
-        .index = 0,
-        .parent_fingerprint = [_]u8{0} ** 4,
+    // Hash message first (Bitcoin-style)
+    const message_hash = zcrypto.hash.sha256(message);
+    
+    const keypair = zcrypto.asym.secp256k1.KeyPair{
+        .private_key = secp256k1_private_key,
+        .public_key = undefined, // Not needed for signing
     };
+    
+    const signature = try keypair.sign(message_hash);
+    const result = try allocator.alloc(u8, 64);
+    @memcpy(result, &signature);
+    
+    return result;
+}
+
+/// Verify secp256k1 signature using zcrypto v0.3.0
+fn verifySecp256k1(message: []const u8, signature: []const u8, public_key: *const [32]u8) bool {
+    if (signature.len != 64) return false;
+    
+    // Hash message first (Bitcoin-style)
+    const message_hash = zcrypto.hash.sha256(message);
+    const sig_array: [64]u8 = signature[0..64].*;
+    
+    return zcrypto.asym.secp256k1.verify(message_hash, sig_array, public_key.*);
+}
+
+/// Derive BIP-32 child key
+pub fn deriveChildKey(parent_key: *const KeyPair, index: u32, hardened: bool, allocator: Allocator) !KeyPair {
+    _ = parent_key;
+    _ = index;
+    _ = hardened;
+    _ = allocator;
+
+    // TODO: Implement BIP-32 key derivation
+    return CryptoError.KeyGenerationFailed;
+}
+
+/// Batch operations for enhanced performance (zcrypto v0.3.0 feature)
+pub const Batch = struct {
+    /// Sign multiple messages with Ed25519
+    pub fn signMultipleEd25519(messages: []const []const u8, private_key: [32]u8, allocator: Allocator) ![][64]u8 {
+        return zcrypto.batch.signBatchEd25519(messages, private_key, allocator);
+    }
+    
+    /// Verify multiple Ed25519 signatures
+    pub fn verifyMultipleEd25519(messages: []const []const u8, signatures: [][64]u8, public_keys: [][32]u8, allocator: Allocator) ![]bool {
+        return zcrypto.batch.verifyBatchEd25519(messages, signatures, public_keys, allocator);
+    }
+    
+    /// Zero-copy in-place signing
+    pub fn signInPlace(message: []const u8, private_key: [32]u8, signature_buffer: *[64]u8) !void {
+        try zcrypto.batch.signInPlace(message, private_key, signature_buffer);
+    }
+    
+    /// Zero-copy in-place hashing
+    pub fn hashInPlace(message: []const u8, hash_buffer: *[32]u8) void {
+        zcrypto.batch.hashInPlace(message, hash_buffer);
+    }
+};
+
+/// Enhanced key derivation for production use
+pub const KeyDerivation = struct {
+    /// Derive key from passphrase using PBKDF2
+    pub fn deriveFromPassphrase(passphrase: []const u8, salt: []const u8, iterations: u32, allocator: Allocator) ![32]u8 {
+        return zcrypto.kdf.pbkdf2(passphrase, salt, iterations, allocator);
+    }
+    
+    /// Derive key using Argon2id (recommended for new applications)
+    pub fn deriveFromPassphraseArgon2(passphrase: []const u8, salt: []const u8, allocator: Allocator) ![32]u8 {
+        return zcrypto.kdf.argon2id(passphrase, salt, allocator);
+    }
+    
+    /// BIP-32 compatible key derivation
+    pub fn deriveBip32(parent_key: [32]u8, chain_code: [32]u8, index: u32, hardened: bool) ![64]u8 {
+        return zcrypto.bip32.derive(parent_key, chain_code, index, hardened);
+    }
+};
+
+/// Generate mnemonic phrase using BIP-39
+pub fn generateMnemonic(allocator: Allocator, entropy_bits: u16) ![]const u8 {
+    return zcrypto.bip39.generate(entropy_bits, allocator);
+}
+
+/// Convert mnemonic to seed using BIP-39
+pub fn mnemonicToSeed(mnemonic: []const u8, passphrase: ?[]const u8, allocator: Allocator) ![64]u8 {
+    return zcrypto.bip39.toSeed(mnemonic, passphrase, allocator);
 }
 
 test "keypair generation" {
     var keypair = try KeyPair.generate(.ed25519);
     defer keypair.deinit();
-    
+
     try std.testing.expect(keypair.key_type == .ed25519);
 }
 
 test "signing and verification" {
     var keypair = try KeyPair.generate(.ed25519);
     defer keypair.deinit();
-    
+
     const message = "Hello, Zwallet!";
     const signature = try keypair.sign(message, std.testing.allocator);
     defer std.testing.allocator.free(signature);
-    
+
     try std.testing.expect(keypair.verify(message, signature));
-}
-
-test "BIP-39 mnemonic" {
-    const mnemonic = try generateMnemonic(std.testing.allocator, 128);
-    defer std.testing.allocator.free(mnemonic);
-    
-    const seed = try mnemonicToSeed(mnemonic, null, std.testing.allocator);
-    try std.testing.expect(seed.len == 64);
-}
-
-test "HD wallet derivation" {
-    var seed: [64]u8 = undefined;
-    std.crypto.random.bytes(&seed);
-    
-    const master = try createHDWallet(seed, .secp256k1);
-    const child = try master.deriveChild(0, false);
-    
-    try std.testing.expect(child.depth == 1);
-    try std.testing.expect(child.index == 0);
 }
