@@ -13,8 +13,6 @@ pub const identity = @import("identity/resolver.zig");
 pub const bridge = @import("bridge/api.zig");
 pub const wraith_bridge = @import("bridge/wraith_bridge.zig");
 pub const cli = @import("cli/commands.zig");
-pub const ghostd = @import("protocol/ghostd_integration.zig");
-pub const crypto = @import("utils/crypto.zig");
 
 // Re-export key types
 pub const Wallet = wallet.Wallet;
@@ -26,14 +24,6 @@ pub const CLI = cli.CLI;
 pub const Bridge = bridge.Bridge;
 pub const WraithBridge = wraith_bridge.WraithBridge;
 pub const WraithConfig = wraith_bridge.WraithConfig;
-
-// v0.3.0 Enhanced Types
-pub const GhostdClient = ghostd.GhostdClient;
-pub const GhostWallet = ghostd.GhostWallet;
-pub const WalletFactory = wallet.WalletFactory;
-pub const WalletStats = wallet.WalletStats;
-pub const KeyPair = crypto.KeyPair;
-pub const Batch = crypto.Batch;
 
 // Re-export FFI types for Rust integration
 pub const ZWalletContext = ffi.ZWalletContext;
@@ -54,11 +44,11 @@ pub const IdentityError = identity.IdentityError;
 pub const BridgeError = bridge.BridgeError;
 
 /// Library version
-pub const version = "0.3.0";
+pub const version = "0.1.0";
 
 /// Initialize a new wallet
-pub fn createWallet(allocator: std.mem.Allocator, mode: WalletMode) !Wallet {
-    return Wallet.generate(allocator, mode);
+pub fn createWallet(allocator: std.mem.Allocator, passphrase: []const u8, mode: WalletMode) !Wallet {
+    return Wallet.create(allocator, passphrase, mode, null);
 }
 
 /// Import wallet from mnemonic
@@ -86,7 +76,7 @@ pub const crypto = @import("utils/crypto.zig");
 pub const keystore = @import("utils/keystore.zig");
 
 test "wallet creation" {
-    var w = try createWallet(std.testing.allocator, .hybrid);
+    var w = try createWallet(std.testing.allocator, "test_passphrase", .hybrid);
     defer w.deinit();
 
     try std.testing.expect(!w.is_locked);

@@ -1,11 +1,8 @@
 //! Transaction module for Zwallet with RealID signing and verification
 //! Handles transaction creation, signing, verification, and serialization
-//! Enhanced with zsig v0.3.0 and zcrypto v0.3.0 features
 
 const std = @import("std");
 const realid = @import("realid");
-const zsig = @import("zsig");
-const zcrypto = @import("zcrypto");
 const qid = @import("qid.zig");
 
 pub const TransactionError = error{
@@ -25,7 +22,7 @@ pub const TransactionType = enum {
     unstake,
     contract_call,
     contract_deploy,
-    
+
     pub fn format(self: TransactionType, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = fmt;
         _ = options;
@@ -39,7 +36,7 @@ pub const Protocol = enum {
     stellar,
     hedera,
     bitcoin,
-    
+
     pub fn format(self: Protocol, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = fmt;
         _ = options;
@@ -67,46 +64,46 @@ pub const Transaction = struct {
     version: u32,
     timestamp: i64,
     nonce: u64,
-    
+
     // Transaction type and protocol
     tx_type: TransactionType,
     protocol: Protocol,
-    
+
     // Addresses and amounts
     from_address: []const u8,
     to_address: []const u8,
     amount: u64,
     fee: u64,
-    
+
     // Token information
     token_contract: ?[]const u8,
     token_decimals: u8,
-    
+
     // Inputs and outputs (for UTXO-based chains)
     inputs: []const TransactionInput,
     outputs: []const TransactionOutput,
-    
+
     // Contract interaction
     contract_data: ?[]const u8,
     gas_limit: ?u64,
     gas_price: ?u64,
-    
+
     // Signature and verification
     signature: ?realid.RealIDSignature,
     public_key: ?realid.RealIDPublicKey,
     signer_qid: ?qid.QID,
-    
+
     // Metadata
     memo: ?[]const u8,
     chain_id: ?u32,
-    
+
     const Self = @This();
-    
+
     /// Create a new transaction
     pub fn init(allocator: std.mem.Allocator, tx_type: TransactionType, protocol: Protocol) Self {
         _ = allocator;
         const current_time = std.time.timestamp();
-        
+
         return Self{
             .id = std.mem.zeroes([32]u8),
             .version = 1,
@@ -132,7 +129,7 @@ pub const Transaction = struct {
             .chain_id = null,
         };
     }
-    
+
     /// Create a simple transfer transaction
     pub fn createTransfer(
         allocator: std.mem.Allocator,
@@ -143,22 +140,22 @@ pub const Transaction = struct {
         fee: u64,
     ) !Self {
         var tx = Self.init(allocator, .transfer, protocol);
-        
+
         tx.from_address = try allocator.dupe(u8, from);
         tx.to_address = try allocator.dupe(u8, to);
         tx.amount = amount;
         tx.fee = fee;
-        
+
         // Generate transaction ID
         try tx.generateId();
-        
+
         return tx;
     }
-    
+
     /// Generate transaction ID from transaction data
     pub fn generateId(self: *Self) !void {
         var hasher = std.crypto.hash.sha2.Sha256.init(.{});
-        
+
         // Hash core transaction data
         hasher.update(std.mem.asBytes(&self.version));
         hasher.update(std.mem.asBytes(&self.timestamp));
@@ -169,144 +166,65 @@ pub const Transaction = struct {
         hasher.update(self.to_address);
         hasher.update(std.mem.asBytes(&self.amount));
         hasher.update(std.mem.asBytes(&self.fee));
-        
+
         if (self.contract_data) |data| {
             hasher.update(data);
         }
-        
+
         hasher.final(&self.id);
     }
-    
-    /// Sign transaction with RealID keypair using zsig v0.3.0 enhanced signing
+
+    /// Sign transaction with RealID keypair
     pub fn sign(self: *Self, keypair: realid.RealIDKeyPair) !void {
         const tx_data = try self.serialize(std.heap.page_allocator);
         defer std.heap.page_allocator.free(tx_data);
-        
-        // Use zsig v0.3.0 for enhanced signing with deterministic nonces
-        self.signature = try zsig.signWithNonce(tx_data, keypair.private_key, self.nonce);
+
+        self.signature = try realid.realid_sign(tx_data, keypair.private_key);
         self.public_key = keypair.public_key;
         self.signer_qid = qid.QID.fromPublicKey(keypair.public_key.bytes);
     }
-    
-    /// Sign transaction with multi-signature support (zsig v0.3.0 feature)
-    pub fn signMultiSig(self: *Self, keypairs: []const realid.RealIDKeyPair, threshold: u32) !void {
-        if (keypairs.len < threshold) return TransactionError.SigningFailed;
-        
-        const tx_data = try self.serialize(std.heap.page_allocator);
-        defer std.heap.page_allocator.free(tx_data);
-        
-        // Use zsig v0.3.0 multi-signature capabilities
-        const signatures = try zsig.multiSign(tx_data, keypairs, threshold, std.heap.page_allocator);
-        defer std.heap.page_allocator.free(signatures);
-        
-        // Store the aggregated signature (for now, use first signature)
-        if (signatures.len > 0) {
-            self.signature = signatures[0];
-            self.public_key = keypairs[0].public_key;
-            self.signer_qid = qid.QID.fromPublicKey(keypairs[0].public_key.bytes);
-        }
-    }
-    
-    /// Batch sign multiple transactions (zsig v0.3.0 feature)
-    pub fn batchSign(transactions: []*Self, keypair: realid.RealIDKeyPair, allocator: std.mem.Allocator) !void {
-        var tx_data_list = std.ArrayList([]const u8).init(allocator);
-        defer {
-            for (tx_data_list.items) |data| {
-                allocator.free(data);
-            }
-            tx_data_list.deinit();
-        }
-        
-        // Serialize all transactions
-        for (transactions) |tx| {
-            const data = try tx.serialize(allocator);
-            try tx_data_list.append(data);
-        }
-        
-        // Use zsig v0.3.0 batch signing for better performance
-        const signatures = try zsig.batchSign(tx_data_list.items, keypair.private_key, allocator);
-        defer allocator.free(signatures);
-        
-        // Apply signatures to transactions
-        for (transactions, signatures) |tx, sig| {
-            tx.signature = sig;
-            tx.public_key = keypair.public_key;
-            tx.signer_qid = qid.QID.fromPublicKey(keypair.public_key.bytes);
-        }
-    }
-    
-    /// Verify transaction signature using zsig v0.3.0 enhanced verification
+
+    /// Verify transaction signature
     pub fn verify(self: Self) !bool {
         if (self.signature == null or self.public_key == null) {
             return TransactionError.InvalidSignature;
         }
-        
+
         const tx_data = try self.serialize(std.heap.page_allocator);
         defer std.heap.page_allocator.free(tx_data);
-        
-        // Use zsig v0.3.0 for enhanced verification with additional checks
-        return zsig.verifyWithChecks(tx_data, self.signature.?, self.public_key.?, self.nonce);
+
+        return realid.realid_verify(self.signature.?, tx_data, self.public_key.?);
     }
-    
-    /// Batch verify multiple transactions (zsig v0.3.0 feature)
-    pub fn batchVerify(transactions: []const Self, allocator: std.mem.Allocator) ![]bool {
-        var tx_data_list = std.ArrayList([]const u8).init(allocator);
-        defer {
-            for (tx_data_list.items) |data| {
-                allocator.free(data);
-            }
-            tx_data_list.deinit();
-        }
-        
-        var signatures = std.ArrayList(realid.RealIDSignature).init(allocator);
-        defer signatures.deinit();
-        
-        var public_keys = std.ArrayList(realid.RealIDPublicKey).init(allocator);
-        defer public_keys.deinit();
-        
-        // Collect transaction data, signatures, and public keys
-        for (transactions) |tx| {
-            if (tx.signature == null or tx.public_key == null) continue;
-            
-            const data = try tx.serialize(allocator);
-            try tx_data_list.append(data);
-            try signatures.append(tx.signature.?);
-            try public_keys.append(tx.public_key.?);
-        }
-        
-        // Use zsig v0.3.0 batch verification for better performance
-        return zsig.batchVerify(tx_data_list.items, signatures.items, public_keys.items, allocator);
-    }
-    
+
     /// Serialize transaction to bytes
     pub fn serialize(self: Self, allocator: std.mem.Allocator) ![]u8 {
         var buffer = std.ArrayList(u8).init(allocator);
         errdefer buffer.deinit();
-        
+
         // Write transaction data in a deterministic order
         try buffer.appendSlice(std.mem.asBytes(&self.version));
         try buffer.appendSlice(std.mem.asBytes(&self.timestamp));
         try buffer.appendSlice(std.mem.asBytes(&self.nonce));
-        
+
         // Transaction type and protocol as strings for consistency
         const tx_type_str = @tagName(self.tx_type);
         try buffer.appendSlice(std.mem.asBytes(&@as(u32, @intCast(tx_type_str.len))));
         try buffer.appendSlice(tx_type_str);
-        
+
         const protocol_str = @tagName(self.protocol);
         try buffer.appendSlice(std.mem.asBytes(&@as(u32, @intCast(protocol_str.len))));
         try buffer.appendSlice(protocol_str);
-        
+
         // Addresses
         try buffer.appendSlice(std.mem.asBytes(&@as(u32, @intCast(self.from_address.len))));
         try buffer.appendSlice(self.from_address);
         try buffer.appendSlice(std.mem.asBytes(&@as(u32, @intCast(self.to_address.len))));
         try buffer.appendSlice(self.to_address);
-        
+
         // Amounts
         try buffer.appendSlice(std.mem.asBytes(&self.amount));
         try buffer.appendSlice(std.mem.asBytes(&self.fee));
-        
+
         // Optional fields
         if (self.contract_data) |data| {
             try buffer.appendSlice(std.mem.asBytes(&@as(u32, @intCast(data.len))));
@@ -314,86 +232,86 @@ pub const Transaction = struct {
         } else {
             try buffer.appendSlice(std.mem.asBytes(&@as(u32, 0)));
         }
-        
+
         if (self.memo) |memo| {
             try buffer.appendSlice(std.mem.asBytes(&@as(u32, @intCast(memo.len))));
             try buffer.appendSlice(memo);
         } else {
             try buffer.appendSlice(std.mem.asBytes(&@as(u32, 0)));
         }
-        
+
         return buffer.toOwnedSlice();
     }
-    
+
     /// Deserialize transaction from bytes
     pub fn deserialize(allocator: std.mem.Allocator, data: []const u8) !Self {
         if (data.len < 16) return TransactionError.SerializationFailed;
-        
+
         var tx = Self.init(allocator, .transfer, .ghostchain);
         var offset: usize = 0;
-        
+
         // Read basic fields
-        tx.version = std.mem.readIntLittle(u32, data[offset..offset + 4]);
+        tx.version = std.mem.readIntLittle(u32, data[offset .. offset + 4]);
         offset += 4;
-        tx.timestamp = std.mem.readIntLittle(i64, data[offset..offset + 8]);
+        tx.timestamp = std.mem.readIntLittle(i64, data[offset .. offset + 8]);
         offset += 8;
-        tx.nonce = std.mem.readIntLittle(u64, data[offset..offset + 8]);
+        tx.nonce = std.mem.readIntLittle(u64, data[offset .. offset + 8]);
         offset += 8;
-        
+
         // Read transaction type
-        const tx_type_len = std.mem.readIntLittle(u32, data[offset..offset + 4]);
+        const tx_type_len = std.mem.readIntLittle(u32, data[offset .. offset + 4]);
         offset += 4;
         if (offset + tx_type_len > data.len) return TransactionError.SerializationFailed;
-        
-        const tx_type_str = data[offset..offset + tx_type_len];
+
+        const tx_type_str = data[offset .. offset + tx_type_len];
         tx.tx_type = std.meta.stringToEnum(TransactionType, tx_type_str) orelse .transfer;
         offset += tx_type_len;
-        
+
         // Read protocol
-        const protocol_len = std.mem.readIntLittle(u32, data[offset..offset + 4]);
+        const protocol_len = std.mem.readIntLittle(u32, data[offset .. offset + 4]);
         offset += 4;
         if (offset + protocol_len > data.len) return TransactionError.SerializationFailed;
-        
-        const protocol_str = data[offset..offset + protocol_len];
+
+        const protocol_str = data[offset .. offset + protocol_len];
         tx.protocol = std.meta.stringToEnum(Protocol, protocol_str) orelse .ghostchain;
         offset += protocol_len;
-        
+
         // Read addresses
-        const from_len = std.mem.readIntLittle(u32, data[offset..offset + 4]);
+        const from_len = std.mem.readIntLittle(u32, data[offset .. offset + 4]);
         offset += 4;
         if (offset + from_len > data.len) return TransactionError.SerializationFailed;
-        tx.from_address = try allocator.dupe(u8, data[offset..offset + from_len]);
+        tx.from_address = try allocator.dupe(u8, data[offset .. offset + from_len]);
         offset += from_len;
-        
-        const to_len = std.mem.readIntLittle(u32, data[offset..offset + 4]);
+
+        const to_len = std.mem.readIntLittle(u32, data[offset .. offset + 4]);
         offset += 4;
         if (offset + to_len > data.len) return TransactionError.SerializationFailed;
-        tx.to_address = try allocator.dupe(u8, data[offset..offset + to_len]);
+        tx.to_address = try allocator.dupe(u8, data[offset .. offset + to_len]);
         offset += to_len;
-        
+
         // Read amounts
         if (offset + 16 > data.len) return TransactionError.SerializationFailed;
-        tx.amount = std.mem.readIntLittle(u64, data[offset..offset + 8]);
+        tx.amount = std.mem.readIntLittle(u64, data[offset .. offset + 8]);
         offset += 8;
-        tx.fee = std.mem.readIntLittle(u64, data[offset..offset + 8]);
+        tx.fee = std.mem.readIntLittle(u64, data[offset .. offset + 8]);
         offset += 8;
-        
+
         return tx;
     }
-    
+
     /// Get transaction hash as hex string
     pub fn getHashHex(self: Self, buffer: []u8) ![]u8 {
         if (buffer.len < 64) return TransactionError.SerializationFailed;
         return std.fmt.bufPrint(buffer, "{}", .{std.fmt.fmtSliceHexLower(&self.id)});
     }
-    
+
     /// Check if transaction is valid
     pub fn isValid(self: Self) bool {
         // Basic validation
         if (self.amount == 0 and self.tx_type == .transfer) return false;
         if (self.from_address.len == 0 or self.to_address.len == 0) return false;
         if (self.fee == 0 and self.protocol != .ghostchain) return false;
-        
+
         // Protocol-specific validation
         switch (self.protocol) {
             .ethereum => {
@@ -404,10 +322,10 @@ pub const Transaction = struct {
             },
             else => {},
         }
-        
+
         return true;
     }
-    
+
     /// Calculate transaction size in bytes
     pub fn getSize(self: Self) u32 {
         var size: u32 = 0;
@@ -420,22 +338,22 @@ pub const Transaction = struct {
         size += 4 + @as(u32, @intCast(self.to_address.len));
         size += 8; // amount
         size += 8; // fee
-        
+
         if (self.contract_data) |data| {
             size += 4 + @as(u32, @intCast(data.len));
         }
-        
+
         if (self.memo) |memo| {
             size += 4 + @as(u32, @intCast(memo.len));
         }
-        
+
         if (self.signature) |_| {
             size += 64; // signature size
         }
-        
+
         return size;
     }
-    
+
     pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         if (self.from_address.len > 0) allocator.free(self.from_address);
         if (self.to_address.len > 0) allocator.free(self.to_address);
@@ -449,7 +367,7 @@ test "transaction creation and signing" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
-    
+
     // Create a transfer transaction
     var tx = try Transaction.createTransfer(
         allocator,
@@ -457,10 +375,10 @@ test "transaction creation and signing" {
         "ghost1abc123",
         "ghost1def456",
         1000000, // 1 GCC
-        1000,    // 0.001 GCC fee
+        1000, // 0.001 GCC fee
     );
     defer tx.deinit(allocator);
-    
+
     try std.testing.expect(tx.isValid());
     try std.testing.expect(tx.amount == 1000000);
     try std.testing.expect(tx.fee == 1000);
@@ -470,23 +388,23 @@ test "transaction serialization" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
-    
+
     var tx = try Transaction.createTransfer(
         allocator,
         .ethereum,
         "0x1234567890123456789012345678901234567890",
         "0x0987654321098765432109876543210987654321",
         500000000000000000, // 0.5 ETH
-        21000000000000000,   // 0.021 ETH fee
+        21000000000000000, // 0.021 ETH fee
     );
     defer tx.deinit(allocator);
-    
+
     const serialized = try tx.serialize(allocator);
     defer allocator.free(serialized);
-    
+
     const deserialized = try Transaction.deserialize(allocator, serialized);
     defer deserialized.deinit(allocator);
-    
+
     try std.testing.expect(deserialized.amount == tx.amount);
     try std.testing.expect(deserialized.fee == tx.fee);
     try std.testing.expect(std.mem.eql(u8, deserialized.from_address, tx.from_address));

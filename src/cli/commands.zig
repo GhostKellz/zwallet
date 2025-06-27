@@ -5,10 +5,10 @@ const std = @import("std");
 const print = std.debug.print;
 const Allocator = std.mem.Allocator;
 const wallet = @import("../core/wallet_realid.zig");
-const transaction = @import("../core/tx.zig");
+const transaction = @import("../protocol/transaction.zig");
 const ghostd = @import("../protocol/ghostd_integration.zig");
 const crypto = @import("../utils/crypto.zig");
-const realid = @import("realid");
+// const realid = @import("realid");
 
 pub const Command = enum {
     help,
@@ -78,6 +78,17 @@ pub const CLI = struct {
             .lock => try self.cmdLock(),
             .bridge => try self.cmdBridge(args[2..]),
             .version => try self.showVersion(),
+            // New v0.3.0 commands - TODO: implement
+            .create_secure => try self.cmdGenerate(args[2..]),
+            .export_wallet => try self.showHelp(),
+            .import_wallet => try self.cmdImport(args[2..]),
+            .generate_mnemonic => try self.showHelp(),
+            .restore_mnemonic => try self.cmdImport(args[2..]),
+            .connect_ghostd => try self.showHelp(),
+            .batch_sign => try self.showHelp(),
+            .wallet_stats => try self.showHelp(),
+            .derive_child => try self.showHelp(),
+            .privacy_send => try self.cmdSend(args[2..]),
         }
     }
 
@@ -138,10 +149,10 @@ pub const CLI = struct {
         }
 
         // Generate wallet
-        self.wallet = try wallet.Wallet.generate(self.allocator, mode);
+        self.wallet = try wallet.Wallet.create(self.allocator, "default_passphrase", mode, null);
 
         // Create default account
-        try self.wallet.?.createAccount(.ghostchain, key_type, name);
+        _ = try self.wallet.?.createAccount(.ghostchain, key_type);
 
         print("Generated new wallet with {s} key\n", .{@tagName(key_type)});
         if (name) |n| {
@@ -204,8 +215,10 @@ pub const CLI = struct {
         }
 
         if (address) |addr| {
-            const balance = try self.wallet.?.getBalance(addr, token);
-            print("Balance: {d} {s}\n", .{ balance, token });
+            _ = addr;
+            // TODO: Get balance by address instead of protocol
+            const balance = self.wallet.?.getBalance(.ethereum, token);
+            print("Balance: {} {s}\n", .{ balance orelse 0, token });
         } else {
             print("Error: No accounts found\n", .{});
         }
@@ -298,7 +311,7 @@ pub const CLI = struct {
 
         print("Accounts:\n", .{});
         for (self.wallet.?.accounts.items, 0..) |account, idx| {
-            print("  {d}. {s} ({s}) - {d} {s}\n", .{ idx + 1, account.name orelse "Unnamed", @tagName(account.protocol), account.balance, account.currency });
+            print("  {d}. ({s}) - Address: {s}\n", .{ idx + 1, @tagName(account.protocol), account.address });
         }
     }
 

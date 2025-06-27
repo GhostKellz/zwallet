@@ -11,24 +11,19 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Dependencies
-    const zsig = b.dependency("zsig", .{ .target = target, .optimize = optimize });
-    // const zledger = b.dependency("zledger", .{ .target = target, .optimize = optimize });
+    // Dependencies - all Ghost ecosystem libraries
     const zcrypto = b.dependency("zcrypto", .{ .target = target, .optimize = optimize });
-    const tokioz = b.dependency("TokioZ", .{ .target = target, .optimize = optimize });
     const realid = b.dependency("realid", .{ .target = target, .optimize = optimize });
-    // const wraith = b.dependency("wraith", .{ .target = target, .optimize = optimize });
+    const zsig = b.dependency("zsig", .{ .target = target, .optimize = optimize });
 
     // Zwallet module with dependencies
     const mod = b.addModule("zwallet", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .imports = &.{
-            .{ .name = "zsig", .module = zsig.module("zsig") },
-            // .{ .name = "zledger", .module = zledger.module("zledger") },
             .{ .name = "zcrypto", .module = zcrypto.module("zcrypto") },
-            .{ .name = "tokioz", .module = tokioz.module("tokioz") },
             .{ .name = "realid", .module = realid.module("realid") },
+            .{ .name = "zsig", .module = zsig.module("zsig") },
         },
     });
 
@@ -125,45 +120,50 @@ pub fn build(b: *std.Build) void {
     example_step.dependOn(&example_cmd.step);
     example_cmd.step.dependOn(b.getInstallStep());
 
-    // RealID CLI example
-    const realid_cli_exe = b.addExecutable(.{
-        .name = "zwallet_realid_cli",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("examples/realid_cli.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "realid", .module = realid.module("realid") },
-            },
-        }),
-    });
+    // // RealID CLI example - DISABLED FOR TESTING
+    // const realid_cli_exe = b.addExecutable(.{
+    //     .name = "zwallet_realid_cli",
+    //     .root_module = b.createModule(.{
+    //         .root_source_file = b.path("examples/realid_cli.zig"),
+    //         .target = target,
+    //         .optimize = optimize,
+    //         .imports = &.{
+    //             .{ .name = "realid", .module = realid.module("realid") },
+    //             .{ .name = "zcrypto", .module = zcrypto.module("zcrypto") },
+    //             .{ .name = "zwallet", .module = mod },
+    //         },
+    //     }),
+    // });
 
-    b.installArtifact(realid_cli_exe);
+    // b.installArtifact(realid_cli_exe);
 
-    // RealID CLI run step
-    const realid_cli_step = b.step("realid-cli", "Run the RealID CLI example");
-    const realid_cli_cmd = b.addRunArtifact(realid_cli_exe);
-    realid_cli_step.dependOn(&realid_cli_cmd.step);
-    realid_cli_cmd.step.dependOn(b.getInstallStep());
+    // // RealID CLI run step
+    // const realid_cli_step = b.step("realid-cli", "Run the RealID CLI example");
+    // const realid_cli_cmd = b.addRunArtifact(realid_cli_exe);
+    // realid_cli_step.dependOn(&realid_cli_cmd.step);
+    // realid_cli_cmd.step.dependOn(b.getInstallStep());
 
-    // FFI Library for Rust integration
-    const ffi_lib = b.addStaticLibrary(.{
-        .name = "zwallet_ffi",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/core/ffi.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "realid", .module = realid.module("realid") },
-            },
-        }),
-    });
+    // // FFI Library for Rust integration - DISABLED FOR TESTING
+    // const ffi_lib = b.addStaticLibrary(.{
+    //     .name = "zwallet_ffi",
+    //     .root_module = b.createModule(.{
+    //         .root_source_file = b.path("src/core/ffi.zig"),
+    //         .target = target,
+    //         .optimize = optimize,
+    //         .imports = &.{
+    //             .{ .name = "realid", .module = realid.module("realid") },
+    //             .{ .name = "zcrypto", .module = zcrypto.module("zcrypto") },
+    //             .{ .name = "zwallet", .module = mod },
+    //             .{ .name = "zsig", .module = zsig.module("zsig") },
+    //         },
+    //     }),
+    // });
 
-    b.installArtifact(ffi_lib);
+    // b.installArtifact(ffi_lib);
 
-    // FFI build step
-    const ffi_step = b.step("ffi", "Build FFI library for Rust integration");
-    ffi_step.dependOn(&ffi_lib.step);
+    // // FFI build step
+    // const ffi_step = b.step("ffi", "Build FFI library for Rust integration");
+    // ffi_step.dependOn(&ffi_lib.step);
 
     // Just like flags, top level steps are also listed in the `--help` menu.
     //

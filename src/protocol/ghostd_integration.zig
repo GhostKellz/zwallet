@@ -32,7 +32,7 @@ pub const GhostdConfig = struct {
     privacy_level: PrivacyLevel,
     enable_zk_proofs: bool,
     enable_mixnet: bool,
-    node_identity: ?realid.RealIDIdentity,
+    node_identity: ?realid.RealIDKeyPair,
 };
 
 /// GhostChain daemon client for enhanced privacy operations
@@ -40,7 +40,7 @@ pub const GhostdClient = struct {
     allocator: std.mem.Allocator,
     config: GhostdConfig,
     session_id: ?[32]u8,
-    wallet_identity: ?realid.RealIDIdentity,
+    wallet_identity: ?realid.RealIDKeyPair,
     
     const Self = @This();
     
@@ -59,12 +59,12 @@ pub const GhostdClient = struct {
             @memset(session, 0);
         }
         if (self.wallet_identity) |*identity| {
-            @memset(&identity.private_key, 0);
+            @memset(&identity.private_key.bytes, 0);
         }
     }
     
     /// Connect to ghostd with wallet authentication
-    pub fn connect(self: *Self, wallet_identity: realid.RealIDIdentity) !void {
+    pub fn connect(self: *Self, wallet_identity: realid.RealIDKeyPair) !void {
         std.log.info("Connecting to ghostd at {}:{}", .{ self.config.endpoint, self.config.port });
         
         // Generate session ID using zcrypto v0.3.0
@@ -156,7 +156,7 @@ pub const GhostdClient = struct {
         defer results.deinit();
         
         // Use zsig v0.3.0 batch signing for efficiency
-        try tx.Transaction.batchSign(transactions, self.wallet_identity.?.keypair, self.allocator);
+        try tx.Transaction.batchSign(transactions, self.wallet_identity.?, self.allocator);
         
         // Submit as batch for better privacy (harder to correlate individual transactions)
         const batch_request = try self.createBatchRequest(transactions);
@@ -187,7 +187,7 @@ pub const GhostdClient = struct {
         defer self.allocator.free(handshake_data);
         
         // Sign handshake with wallet identity
-        const signature = try realid.realid_sign(handshake_data, self.wallet_identity.?.keypair.private_key);
+        const signature = try realid.realid_sign(handshake_data, self.wallet_identity.?.private_key);
         
         // Send handshake to ghostd
         const handshake_request = try self.createHandshakeRequest(handshake_data, signature);
@@ -257,7 +257,7 @@ pub const GhostdClient = struct {
             .id = request_id,
             .auth = .{
                 .session_id = if (self.session_id) |sid| std.fmt.bytesToHex(&sid, .lower) else null,
-                .wallet_qid = if (self.wallet_identity) |wi| std.fmt.bytesToHex(&wi.qid, .lower) else null,
+                .wallet_qid = if (self.wallet_identity) |wi| std.fmt.bytesToHex(&realid.realid_qid_from_pubkey(wi.public_key).bytes, .lower) else null,
             },
         }, .{}, request.writer());
         
@@ -266,7 +266,6 @@ pub const GhostdClient = struct {
     
     fn sendRequest(self: *Self, request_data: []const u8) ![]u8 {
         // Simulate network request to ghostd
-        _ = self;
         _ = request_data;
         
         // TODO: Implement actual HTTP/HTTPS client for ghostd communication
@@ -300,7 +299,7 @@ pub const GhostdClient = struct {
             .type = "handshake",
             .data = data,
             .signature = std.fmt.bytesToHex(&signature, .lower),
-            .public_key = if (self.wallet_identity) |wi| std.fmt.bytesToHex(&wi.keypair.public_key, .lower) else null,
+            .public_key = if (self.wallet_identity) |wi| std.fmt.bytesToHex(&wi.public_key.bytes, .lower) else null,
         };
         
         var buffer = std.ArrayList(u8).init(self.allocator);
@@ -327,7 +326,6 @@ pub const GhostdClient = struct {
     
     fn anonymizeTransaction(self: *Self, transaction: *tx.Transaction) ![]u8 {
         // Apply anonymization techniques
-        _ = self;
         _ = transaction;
         // TODO: Implement transaction anonymization
         return self.allocator.dupe(u8, "anonymized_tx_data");
@@ -335,7 +333,6 @@ pub const GhostdClient = struct {
     
     fn generateZkProof(self: *Self, transaction: *tx.Transaction) ![]u8 {
         // Generate zero-knowledge proof for transaction
-        _ = self;
         _ = transaction;
         // TODO: Implement ZK proof generation
         return self.allocator.dupe(u8, "zk_proof_data");
@@ -401,7 +398,6 @@ pub const GhostdClient = struct {
     }
     
     fn parseBatchResponse(self: *Self, response: []const u8) ![][]u8 {
-        _ = self;
         _ = response;
         // TODO: Implement batch response parsing
         var results = std.ArrayList([]u8).init(self.allocator);
@@ -438,8 +434,8 @@ pub const GhostWallet = struct {
     const Self = @This();
     
     pub fn init(allocator: std.mem.Allocator, config: GhostdConfig) !Self {
-        var base_wallet = try zwallet.createWallet(allocator, .hybrid);
-        var ghostd_client = GhostdClient.init(allocator, config);
+        const base_wallet = try zwallet.createWallet(allocator, .hybrid);
+        const ghostd_client = GhostdClient.init(allocator, config);
         
         return Self{
             .base_wallet = base_wallet,

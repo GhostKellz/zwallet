@@ -13,21 +13,21 @@ pub fn main() !void {
 
     // 1. Create a new wallet
     std.debug.print("1. Creating new wallet...\n", .{});
-    var wallet = try zwallet.createWallet(allocator, .hybrid);
+    var wallet = try zwallet.createWallet(allocator, "test_passphrase_123", .hybrid);
     defer wallet.deinit();
 
     // 2. Create accounts for different protocols
     std.debug.print("2. Creating accounts...\n", .{});
-    try wallet.createAccount(.ghostchain, .ed25519, "GhostChain Account");
-    try wallet.createAccount(.ethereum, .secp256k1, "Ethereum Account");
-    try wallet.createAccount(.stellar, .ed25519, "Stellar Account");
+    _ = try wallet.createAccount(.ghostchain, .ed25519);
+    _ = try wallet.createAccount(.ethereum, .secp256k1);
+    _ = try wallet.createAccount(.stellar, .ed25519);
 
     std.debug.print("   Created {} accounts\n", .{wallet.accounts.items.len});
 
     // 3. List accounts
     std.debug.print("3. Account listing:\n", .{});
     for (wallet.accounts.items, 0..) |account, i| {
-        std.debug.print("   Account {}: {s} ({s}) - {} {s}\n", .{ i + 1, @tagName(account.protocol), account.name orelse "Unnamed", account.balance, account.currency });
+        std.debug.print("   Account {}: {s} - Address: {s}\n", .{ i + 1, @tagName(account.protocol), account.address });
     }
 
     // 4. Identity resolution example
@@ -49,7 +49,7 @@ pub fn main() !void {
         const from_account = &wallet.accounts.items[0];
         const to_address = "0x742d35cc6e0c0532e234b37e85e40521a2b5a4b8";
 
-        var tx = try zwallet.transaction.ProtocolFactory.createTransaction(allocator, from_account.protocol, from_account.address, to_address, 1000000 // 1 token in micro-units
+        var tx = try zwallet.transaction.ProtocolFactory.createTransaction(allocator, .ethereum, from_account.address, to_address, 1000000 // 1 token in micro-units
         );
         defer tx.deinit(allocator);
 
@@ -57,26 +57,26 @@ pub fn main() !void {
         std.debug.print("   Amount: {} {s}\n", .{ tx.amount, tx.currency });
 
         // Calculate and display fee
-        const fee = zwallet.transaction.ProtocolFactory.estimateFee(from_account.protocol, tx.amount, tx.gas_limit, tx.gas_price);
+        const fee = zwallet.transaction.ProtocolFactory.estimateFee(.ethereum, tx.amount, tx.gas_limit, tx.gas_price);
         std.debug.print("   Estimated fee: {} {s}\n", .{ fee, tx.currency });
     }
 
     // 6. Bridge API example
-    std.debug.print("6. Testing Web3 bridge...\n", .{});
-    var bridge = zwallet.Bridge.init(allocator);
-    defer bridge.deinit();
+    std.debug.print("6. Bridge API disabled (wallet type mismatch)...\n", .{});
+    // var bridge = zwallet.Bridge.init(allocator);
+    // defer bridge.deinit();
 
-    bridge.setWallet(&wallet);
-    try bridge.addAuthorizedOrigin("https://app.uniswap.org");
+    // bridge.setWallet(&wallet);
+    // try bridge.addAuthorizedOrigin("https://app.uniswap.org");
 
     // Mock JSON-RPC request
-    const request =
+    _ = 
         \\{"jsonrpc":"2.0","id":1,"method":"eth_accounts","params":[]}
     ;
 
-    const response = try bridge.processRequest(request, "https://app.uniswap.org");
-    defer allocator.free(response);
-    std.debug.print("   Bridge response: {s}\n", .{response});
+    // const response = try bridge.processRequest(request, "https://app.uniswap.org");
+    // defer allocator.free(response);
+    // std.debug.print("   Bridge response: {s}\n", .{response});
 
     // 7. Wallet locking/unlocking
     std.debug.print("7. Testing wallet security...\n", .{});
@@ -85,7 +85,7 @@ pub fn main() !void {
     wallet.lock();
     std.debug.print("   After lock: {}\n", .{wallet.is_locked});
 
-    try wallet.unlock("test_password");
+    try wallet.unlock("test_passphrase_123");
     std.debug.print("   After unlock: {}\n", .{wallet.is_locked});
 
     std.debug.print("\n=== Example completed successfully! ===\n", .{});

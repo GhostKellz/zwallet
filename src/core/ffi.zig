@@ -147,21 +147,21 @@ export fn zwallet_create_wallet(
     device_bound: bool,
 ) c_int {
     if (!ctx.is_valid) return FFI_ERROR_INVALID_PARAM;
-    
+
     const pass_slice = passphrase[0..passphrase_len];
     const name_slice = if (wallet_name_len > 0) wallet_name[0..wallet_name_len] else null;
-    
+
     const mode: wallet.WalletMode = if (device_bound) .device_bound else .hybrid;
-    
+
     const new_wallet = wallet.Wallet.create(global_allocator, pass_slice, mode, name_slice) catch |err| {
         return zigErrorToC(err);
     };
-    
+
     const wallet_ptr = global_allocator.create(wallet.Wallet) catch {
         return FFI_ERROR_MEMORY_ERROR;
     };
     wallet_ptr.* = new_wallet;
-    
+
     ctx.wallet_ptr = @ptrCast(wallet_ptr);
     return FFI_SUCCESS;
 }
@@ -175,19 +175,19 @@ export fn zwallet_load_wallet(
     passphrase_len: u32,
 ) c_int {
     if (!ctx.is_valid) return FFI_ERROR_INVALID_PARAM;
-    
+
     const data_slice = wallet_data[0..data_len];
     const pass_slice = passphrase[0..passphrase_len];
-    
+
     const loaded_wallet = wallet.Wallet.load(global_allocator, data_slice, pass_slice) catch |err| {
         return zigErrorToC(err);
     };
-    
+
     const wallet_ptr = global_allocator.create(wallet.Wallet) catch {
         return FFI_ERROR_MEMORY_ERROR;
     };
     wallet_ptr.* = loaded_wallet;
-    
+
     ctx.wallet_ptr = @ptrCast(wallet_ptr);
     return FFI_SUCCESS;
 }
@@ -200,26 +200,26 @@ export fn zwallet_create_account(
     account_out: *WalletAccount,
 ) c_int {
     if (!ctx.is_valid or ctx.wallet_ptr == null) return FFI_ERROR_INVALID_PARAM;
-    
+
     const wallet_ptr: *wallet.Wallet = @ptrCast(@alignCast(ctx.wallet_ptr.?));
     const proto = intToProtocol(protocol);
     const ktype = intToKeyType(key_type);
-    
+
     const account = wallet_ptr.createAccount(proto, ktype) catch |err| {
         return zigErrorToC(err);
     };
-    
+
     // Fill account structure
     @memset(&account_out.address, 0);
     const addr_len = @min(account.address.len, 63);
     @memcpy(account_out.address[0..addr_len], account.address[0..addr_len]);
     account_out.address_len = @intCast(addr_len);
-    
+
     account_out.public_key = account.public_key.bytes;
     account_out.qid = account.qid.bytes;
     account_out.protocol = protocolToInt(account.protocol);
     account_out.key_type = keyTypeToInt(account.key_type);
-    
+
     return FFI_SUCCESS;
 }
 
@@ -232,11 +232,11 @@ export fn zwallet_get_balance(
     balance_out: *u64,
 ) c_int {
     if (!ctx.is_valid or ctx.wallet_ptr == null) return FFI_ERROR_INVALID_PARAM;
-    
+
     const wallet_ptr: *wallet.Wallet = @ptrCast(@alignCast(ctx.wallet_ptr.?));
     const proto = intToProtocol(protocol);
     const token_slice = token[0..token_len];
-    
+
     if (wallet_ptr.getBalance(proto, token_slice)) |balance| {
         balance_out.* = balance;
         return FFI_SUCCESS;
@@ -256,25 +256,25 @@ export fn zwallet_update_balance(
     decimals: u8,
 ) c_int {
     if (!ctx.is_valid or ctx.wallet_ptr == null) return FFI_ERROR_INVALID_PARAM;
-    
+
     const wallet_ptr: *wallet.Wallet = @ptrCast(@alignCast(ctx.wallet_ptr.?));
     const proto = intToProtocol(protocol);
     const token_slice = token[0..token_len];
-    
+
     wallet_ptr.updateBalance(proto, token_slice, amount, decimals) catch |err| {
         return zigErrorToC(err);
     };
-    
+
     return FFI_SUCCESS;
 }
 
 /// Lock wallet
 export fn zwallet_lock(ctx: *ZWalletContext) c_int {
     if (!ctx.is_valid or ctx.wallet_ptr == null) return FFI_ERROR_INVALID_PARAM;
-    
+
     const wallet_ptr: *wallet.Wallet = @ptrCast(@alignCast(ctx.wallet_ptr.?));
     wallet_ptr.lock();
-    
+
     return FFI_SUCCESS;
 }
 
@@ -285,14 +285,14 @@ export fn zwallet_unlock(
     passphrase_len: u32,
 ) c_int {
     if (!ctx.is_valid or ctx.wallet_ptr == null) return FFI_ERROR_INVALID_PARAM;
-    
+
     const wallet_ptr: *wallet.Wallet = @ptrCast(@alignCast(ctx.wallet_ptr.?));
     const pass_slice = passphrase[0..passphrase_len];
-    
+
     wallet_ptr.unlock(pass_slice) catch |err| {
         return zigErrorToC(err);
     };
-    
+
     return FFI_SUCCESS;
 }
 
@@ -302,14 +302,14 @@ export fn zwallet_get_master_qid(
     qid_out: *[16]u8,
 ) c_int {
     if (!ctx.is_valid or ctx.wallet_ptr == null) return FFI_ERROR_INVALID_PARAM;
-    
+
     const wallet_ptr: *wallet.Wallet = @ptrCast(@alignCast(ctx.wallet_ptr.?));
-    
+
     if (wallet_ptr.master_qid) |master_qid| {
         qid_out.* = master_qid.bytes;
         return FFI_SUCCESS;
     }
-    
+
     return FFI_ERROR_INVALID_PARAM;
 }
 
@@ -326,9 +326,9 @@ export fn realid_init() RealIdContext {
 /// Destroy RealID context
 export fn realid_destroy(ctx: *RealIdContext) void {
     if (ctx.identity_ptr) |ptr| {
-        const identity_ptr: *realid.RealIDIdentity = @ptrCast(@alignCast(ptr));
+        const identity_ptr: *realid.RealIDKeyPair = @ptrCast(@alignCast(ptr));
         // Securely clear sensitive data
-        std.crypto.utils.secureZero(u8, &identity_ptr.keypair.private_key.bytes);
+        std.crypto.utils.secureZero(u8, &identity_ptr.private_key.bytes);
         global_allocator.destroy(identity_ptr);
         ctx.identity_ptr = null;
     }
@@ -344,9 +344,9 @@ export fn realid_generate_identity(
     identity_out: *ZidIdentity,
 ) c_int {
     if (!ctx.is_valid) return FFI_ERROR_INVALID_PARAM;
-    
+
     const pass_slice = passphrase[0..passphrase_len];
-    
+
     const identity = if (device_bound) blk: {
         const device_fp = realid.generate_device_fingerprint(global_allocator) catch {
             return FFI_ERROR_MEMORY_ERROR;
@@ -357,19 +357,19 @@ export fn realid_generate_identity(
     } else realid.realid_generate_from_passphrase(pass_slice) catch {
         return FFI_ERROR_SIGNING_FAILED;
     };
-    
+
     // Store identity
-    const identity_ptr = global_allocator.create(realid.RealIDIdentity) catch {
+    const identity_ptr = global_allocator.create(realid.RealIDKeyPair) catch {
         return FFI_ERROR_MEMORY_ERROR;
     };
     identity_ptr.* = identity;
     ctx.identity_ptr = @ptrCast(identity_ptr);
-    
+
     // Fill output structure
-    identity_out.public_key = identity.keypair.public_key.bytes;
-    identity_out.qid = qid.QID.fromPublicKey(identity.keypair.public_key.bytes).bytes;
+    identity_out.public_key = identity.public_key.bytes;
+    identity_out.qid = qid.QID.fromPublicKey(identity.public_key.bytes).bytes;
     identity_out.device_bound = device_bound;
-    
+
     return FFI_SUCCESS;
 }
 
@@ -381,18 +381,18 @@ export fn realid_sign_data(
     signature_out: *SignatureResult,
 ) c_int {
     if (!ctx.is_valid or ctx.identity_ptr == null) return FFI_ERROR_INVALID_PARAM;
-    
-    const identity_ptr: *realid.RealIDIdentity = @ptrCast(@alignCast(ctx.identity_ptr.?));
+
+    const identity_ptr: *realid.RealIDKeyPair = @ptrCast(@alignCast(ctx.identity_ptr.?));
     const data_slice = data[0..data_len];
-    
-    const signature = realid.realid_sign(data_slice, identity_ptr.keypair.private_key) catch {
+
+    const signature = realid.realid_sign(data_slice, identity_ptr.private_key) catch {
         signature_out.success = false;
         return FFI_ERROR_SIGNING_FAILED;
     };
-    
+
     signature_out.signature = signature.bytes;
     signature_out.success = true;
-    
+
     return FFI_SUCCESS;
 }
 
@@ -406,7 +406,7 @@ export fn realid_verify_signature(
     const data_slice = data[0..data_len];
     const pubkey = realid.RealIDPublicKey{ .bytes = public_key.* };
     const sig = realid.RealIDSignature{ .bytes = signature.* };
-    
+
     return realid.realid_verify(sig, data_slice, pubkey);
 }
 
@@ -418,14 +418,14 @@ export fn qid_to_string(
     out_len: *u32,
 ) c_int {
     if (buffer_len < 40) return FFI_ERROR_INVALID_PARAM; // IPv6 string needs at least 39 chars + null
-    
+
     const qid_obj = qid.QID{ .bytes = qid_bytes.* };
     const buffer_slice = buffer[0..buffer_len];
-    
+
     const qid_string = qid_obj.toString(buffer_slice) catch {
         return FFI_ERROR_INVALID_PARAM;
     };
-    
+
     out_len.* = @intCast(qid_string.len);
     return FFI_SUCCESS;
 }
@@ -437,11 +437,11 @@ export fn string_to_qid(
     qid_out: *[16]u8,
 ) c_int {
     const string_slice = qid_string[0..string_len];
-    
+
     const qid_obj = qid.QID.fromString(string_slice) catch {
         return FFI_ERROR_INVALID_PARAM;
     };
-    
+
     qid_out.* = qid_obj.bytes;
     return FFI_SUCCESS;
 }
@@ -450,11 +450,11 @@ export fn string_to_qid(
 test "FFI wallet operations" {
     var ctx = zwallet_init();
     defer zwallet_destroy(&ctx);
-    
+
     // Create wallet
     const passphrase = "test_passphrase_for_ffi";
     const wallet_name = "ffi_test_wallet";
-    
+
     const create_result = zwallet_create_wallet(
         &ctx,
         passphrase.ptr,
@@ -463,13 +463,13 @@ test "FFI wallet operations" {
         wallet_name.len,
         false,
     );
-    
+
     try std.testing.expect(create_result == FFI_SUCCESS);
-    
+
     // Create account
     var account: WalletAccount = undefined;
     const account_result = zwallet_create_account(&ctx, 0, 0, &account); // GhostChain, Ed25519
-    
+
     try std.testing.expect(account_result == FFI_SUCCESS);
     try std.testing.expect(account.protocol == 0);
     try std.testing.expect(account.key_type == 0);
@@ -478,11 +478,11 @@ test "FFI wallet operations" {
 test "FFI RealID operations" {
     var ctx = realid_init();
     defer realid_destroy(&ctx);
-    
+
     // Generate identity
     const passphrase = "ffi_realid_test";
     var identity: ZidIdentity = undefined;
-    
+
     const gen_result = realid_generate_identity(
         &ctx,
         passphrase.ptr,
@@ -490,24 +490,24 @@ test "FFI RealID operations" {
         false,
         &identity,
     );
-    
+
     try std.testing.expect(gen_result == FFI_SUCCESS);
     try std.testing.expect(!identity.device_bound);
-    
+
     // Sign and verify
     const test_data = "Hello from FFI!";
     var signature: SignatureResult = undefined;
-    
+
     const sign_result = realid_sign_data(
         &ctx,
         test_data.ptr,
         test_data.len,
         &signature,
     );
-    
+
     try std.testing.expect(sign_result == FFI_SUCCESS);
     try std.testing.expect(signature.success);
-    
+
     // Verify signature
     const verify_result = realid_verify_signature(
         &identity.public_key,
@@ -515,6 +515,6 @@ test "FFI RealID operations" {
         test_data.len,
         &signature.signature,
     );
-    
+
     try std.testing.expect(verify_result);
 }

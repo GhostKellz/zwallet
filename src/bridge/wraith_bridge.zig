@@ -119,7 +119,7 @@ pub const WraithBridge = struct {
         // try server.start();
 
         // For now, use a simple mock server
-        std.log.info("Mock Wraith bridge server started - waiting for Wraith integration");
+        std.log.info("Mock Wraith bridge server started - waiting for Wraith integration", .{});
 
         // Simulate server running
         while (true) {
