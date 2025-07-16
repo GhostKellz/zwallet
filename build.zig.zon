@@ -1,6 +1,6 @@
 .{
     .name = .zwallet,
-    .version = "0.3.1",
+    .version = "0.3.2",
     .fingerprint = 0x18de63a7d49c7018,
     .dependencies = .{
         // zsync - async runtime support
