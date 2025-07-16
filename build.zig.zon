@@ -1,25 +1,28 @@
 .{
     .name = .zwallet,
-    .version = "0.3.0",
+    .version = "0.3.1",
     .fingerprint = 0x18de63a7d49c7018,
     .dependencies = .{
-        .zcrypto = .{
-            .url = "https://github.com/GhostKellz/zcrypto/archive/refs/heads/main.tar.gz",
-            .hash = "zcrypto-0.0.0-rgQAIzgEBADjnAEqmjRN2TmhRa-O8lScNIa0xpkZS59t",
+        // zsync - async runtime support
+        .zsync = .{
+            .url = "https://github.com/ghostkellz/zsync/archive/refs/heads/main.tar.gz",
+            .hash = "zsync-0.3.2-KAuhed0XGADaOKjYNl34Ragvca2zBYqvoAsBV-AhkoLS",
+            .lazy = true, // Only loaded when async features are enabled
         },
         .zsig = .{
-            .url = "https://github.com/GhostKellz/zsig/archive/a3118f47b966e96c792be9e2c722563f87e3cbdb.tar.gz",
-            .hash = "1220e3b4ec0334299fde765367f83b1fef6d351653d733bbf216afe75f9b8c85ae06",
+            .url = "https://github.com/ghostkellz/zsig/archive/refs/heads/main.tar.gz",
+            .hash = "zsig-0.5.0-hyAVHaNQAgBSQccIM9Zs0x96VERjNPXliiuuwmXr3FZh",
         },
-        .realid = .{
-            .url = "https://github.com/GhostKellz/realID/archive/87118323a5c67639b3cea9077c8a2a9b330f4652.tar.gz",
-            .hash = "122054cec3d6f32e8261e38517d4e36c9212fcc5bcc026d9819fbd42e754b5b794c8",
+        .zledger = .{
+            .url = "https://github.com/ghostkellz/zledger/archive/refs/heads/main.tar.gz",
+            .hash = "zledger-0.3.2-gtTGiANpAgAfvNn_tLUwfCsh_scPhgKy30EXGcXnKjPL",
         },
-        .tokioz = .{
-            .url = "https://github.com/GhostKellz/TokioZ/archive/refs/heads/main.tar.gz",
-            .hash = "TokioZ-0.0.0-DgtPReljAgAuGaoLtQCm_E-UA_7j_TAGQ8kkV-mtjz4V",
+        .shroud = .{
+            .url = "https://github.com/ghostkellz/shroud/archive/refs/heads/main.tar.gz",
+            .hash = "shroud-1.2.0-7bM0UU5gAgDz5_6Lv88eYw1jsVyqPCSZmG26DxAlp4Uq",
         },
     },
+
     .paths = .{
         "build.zig",
         "build.zig.zon",

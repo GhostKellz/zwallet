@@ -1,12 +1,13 @@
-//! Zwallet - A Secure, Programmable Wallet for Zig with Shroud Identity & Privacy
-//! Core wallet functionality with multi-protocol support, cryptographic audit trails, and privacy-preserving identity management
+//! GWallet - A Secure, Programmable Wallet for Zig with RealID Integration
+//! Core wallet functionality with multi-protocol support
 
 const std = @import("std");
 
 // Re-export core modules
-pub const wallet = @import("core/wallet.zig");
+pub const wallet = @import("core/wallet_realid.zig");
 pub const tx = @import("core/tx.zig");
 pub const qid = @import("core/qid.zig");
+pub const ffi = @import("core/ffi.zig");
 pub const transaction = @import("protocol/transaction.zig");
 pub const identity = @import("identity/resolver.zig");
 pub const bridge = @import("bridge/api.zig");
@@ -24,6 +25,12 @@ pub const Bridge = bridge.Bridge;
 pub const WraithBridge = wraith_bridge.WraithBridge;
 pub const WraithConfig = wraith_bridge.WraithConfig;
 
+// Re-export FFI types for Rust integration
+pub const GWalletContext = ffi.GWalletContext;
+pub const WalletAccount = ffi.WalletAccount;
+pub const RealIdContext = ffi.RealIdContext;
+pub const ZidIdentity = ffi.ZidIdentity;
+pub const SignatureResult = ffi.SignatureResult;
 
 // Re-export enums
 pub const WalletMode = wallet.WalletMode;
@@ -37,7 +44,7 @@ pub const IdentityError = identity.IdentityError;
 pub const BridgeError = bridge.BridgeError;
 
 /// Library version
-pub const version = "0.4.0";
+pub const version = "0.3.0";
 
 /// Initialize a new wallet
 pub fn createWallet(allocator: std.mem.Allocator, passphrase: []const u8, mode: WalletMode) !Wallet {

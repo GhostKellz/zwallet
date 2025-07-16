@@ -1,13 +1,10 @@
-//! Core wallet functionality with Shroud identity, Zsig signing, and Zledger audit trails
-//! Manages keys, accounts, and transactions with privacy-preserving identity management
+//! Core wallet functionality
+//! Manages keys, accounts, and transactions
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const crypto = @import("../utils/crypto.zig");
 const keystore = @import("../utils/keystore.zig");
-const zsig = @import("zsig");
-const zledger = @import("zledger");
-const shroud = @import("shroud");
 
 pub const WalletError = error{
     InvalidMnemonic,
@@ -19,17 +16,12 @@ pub const WalletError = error{
     UnknownProtocol,
     WalletLocked,
     InvalidPassword,
-    IdentityGenerationFailed,
-    AuditTrailFailed,
-    SigningFailed,
-    PrivacyTokenFailed,
 };
 
 pub const WalletMode = enum {
     public_identity,
     private_cold,
     hybrid,
-    privacy_focused,  // New mode using Shroud ephemeral identities
 };
 
 pub const Protocol = enum {
@@ -50,8 +42,6 @@ pub const Account = struct {
     name: ?[]const u8,
     balance: i64, // in micro-units
     currency: []const u8,
-    shroud_identity: ?shroud.identity.Identity,  // Privacy-preserving identity
-    ledger_account: ?zledger.account.Account,    // Audit trail account
 
     pub fn init(allocator: Allocator, protocol: Protocol, key_type: KeyType, name: ?[]const u8) !Account {
         // Generate keypair
@@ -68,8 +58,6 @@ pub const Account = struct {
             .name = if (name) |n| try allocator.dupe(u8, n) else null,
             .balance = 0,
             .currency = try allocator.dupe(u8, getDefaultCurrency(protocol)),
-            .shroud_identity = null,
-            .ledger_account = null,
         };
     }
 
@@ -104,8 +92,6 @@ pub const Wallet = struct {
     keystore_path: ?[]const u8,
     is_locked: bool,
     master_seed: ?[32]u8,
-    shroud_guardian: ?shroud.guardian.Guardian,  // Privacy and access control
-    audit_ledger: ?zledger.journal.Journal,      // Transaction audit trail
 
     pub fn init(allocator: Allocator, mode: WalletMode, keystore_path: ?[]const u8) Wallet {
         return Wallet{
@@ -115,8 +101,6 @@ pub const Wallet = struct {
             .keystore_path = keystore_path,
             .is_locked = true,
             .master_seed = null,
-            .shroud_guardian = null,
-            .audit_ledger = null,
         };
     }
 
@@ -130,16 +114,6 @@ pub const Wallet = struct {
         if (self.master_seed) |*seed| {
             @memset(seed, 0);
         }
-        
-        // Clean up Shroud guardian
-        if (self.shroud_guardian) |*guardian| {
-            guardian.deinit();
-        }
-        
-        // Clean up audit ledger
-        if (self.audit_ledger) |*ledger| {
-            ledger.deinit();
-        }
     }
 
     /// Generate new wallet from mnemonic
@@ -150,29 +124,6 @@ pub const Wallet = struct {
         var wallet = Wallet.init(allocator, mode, null);
         // TODO: Implement BIP-39 mnemonic to seed derivation
         wallet.is_locked = false;
-        return wallet;
-    }
-
-    /// Create a new wallet with passphrase
-    pub fn create(allocator: Allocator, passphrase: []const u8, mode: WalletMode, keystore_path: ?[]const u8) !Wallet {
-        _ = passphrase; // TODO: Use passphrase for key derivation
-        var wallet = Wallet.init(allocator, mode, keystore_path);
-        
-        // Generate random seed
-        var seed: [32]u8 = undefined;
-        std.crypto.random.bytes(&seed);
-        wallet.master_seed = seed;
-        wallet.is_locked = false;
-        
-        // Initialize optional components based on mode
-        if (mode == .privacy_focused) {
-            wallet.shroud_guardian = shroud.guardian.Guardian.init(allocator);
-        }
-        
-        if (mode != .private_cold) {
-            wallet.audit_ledger = zledger.journal.Journal.init(allocator, null);
-        }
-        
         return wallet;
     }
 
@@ -265,20 +216,19 @@ fn generateAddress(allocator: Allocator, public_key: *const [32]u8, protocol: Pr
             // GhostChain address format: gc_ + base58(hash(public_key))
             var hash: [32]u8 = undefined;
             std.crypto.hash.sha2.Sha256.hash(public_key, &hash, .{});
-            // Simplified address generation for now
-            const hex = try std.fmt.allocPrint(allocator, "gc_placeholder_{d}", .{std.time.timestamp()});
+            const hex = try std.fmt.allocPrint(allocator, "gc_{}", .{std.fmt.fmtSliceHexLower(hash[0..20])});
             return hex;
         },
         .ethereum => {
             // Ethereum address: 0x + last 20 bytes of keccak256(public_key)
             var hash: [32]u8 = undefined;
             std.crypto.hash.sha2.Sha256.hash(public_key, &hash, .{}); // TODO: Use Keccak256
-            const hex = try std.fmt.allocPrint(allocator, "0x_placeholder_{d}", .{std.time.timestamp()});
+            const hex = try std.fmt.allocPrint(allocator, "0x{}", .{std.fmt.fmtSliceHexLower(hash[12..32])});
             return hex;
         },
         .stellar => {
             // Stellar address: G + base32(public_key + checksum)
-            const hex = try std.fmt.allocPrint(allocator, "G_placeholder_{d}", .{std.time.timestamp()});
+            const hex = try std.fmt.allocPrint(allocator, "G{}", .{std.fmt.fmtSliceHexUpper(public_key[0..28])});
             return hex;
         },
         .hedera => {
@@ -291,7 +241,7 @@ fn generateAddress(allocator: Allocator, public_key: *const [32]u8, protocol: Pr
         },
         .ripple => {
             // XRPL address: r + base58(public_key + checksum)
-            const hex = try std.fmt.allocPrint(allocator, "r_placeholder_{d}", .{std.time.timestamp()});
+            const hex = try std.fmt.allocPrint(allocator, "r{}", .{std.fmt.fmtSliceHexUpper(public_key[0..25])});
             return hex;
         },
     }

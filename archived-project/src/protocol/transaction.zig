@@ -1,12 +1,9 @@
-//! Protocol-specific transaction handling with zsig signing and zledger audit trails
-//! Supports multiple blockchain protocols with privacy-preserving features
+//! Protocol-specific transaction handling
+//! Supports multiple blockchain protocols
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const wallet = @import("../core/wallet.zig");
-const zsig = @import("zsig");
-const zledger = @import("zledger");
-const shroud = @import("shroud");
 
 pub const Transaction = struct {
     from: []const u8,
@@ -21,8 +18,6 @@ pub const Transaction = struct {
     gas_price: ?i64,
     signature: ?[]const u8,
     hash: ?[]const u8,
-    metadata: ?[]const u8,  // For privacy tokens and audit info
-    ledger_entry_id: ?[]const u8,  // Reference to audit trail entry
 
     pub fn init(allocator: Allocator, protocol: wallet.Protocol, from: []const u8, to: []const u8, amount: i64, currency: []const u8) !Transaction {
         return Transaction{
@@ -38,8 +33,6 @@ pub const Transaction = struct {
             .gas_price = null,
             .signature = null,
             .hash = null,
-            .metadata = null,
-            .ledger_entry_id = null,
         };
     }
 
@@ -50,8 +43,6 @@ pub const Transaction = struct {
         if (self.memo) |m| allocator.free(m);
         if (self.signature) |s| allocator.free(s);
         if (self.hash) |h| allocator.free(h);
-        if (self.metadata) |m| allocator.free(m);
-        if (self.ledger_entry_id) |l| allocator.free(l);
     }
 
     /// Calculate transaction hash for signing
@@ -67,18 +58,14 @@ pub const Transaction = struct {
         return try allocator.dupe(u8, &hash);
     }
 
-    /// Sign transaction with zsig cryptographic signing
+    /// Sign transaction with private key
     pub fn sign(self: *Transaction, allocator: Allocator, private_key: []const u8) !void {
-        _ = private_key; // TODO: Use for actual signing
+        _ = private_key; // TODO: Use zsig for actual signing
+
         const hash = try self.calculateHash(allocator);
         defer allocator.free(hash);
 
-        // Create keypair from private key (simplified for now)
-        // TODO: Implement proper zsig signing
-        const signature_bytes = try allocator.alloc(u8, 64);
-        @memset(signature_bytes, 0); // Placeholder signature
-        
-        self.signature = try allocator.dupe(u8, signature_bytes);
+        self.signature = try allocator.dupe(u8, "dummy_signature");
         self.hash = try allocator.dupe(u8, hash);
     }
 };
@@ -92,29 +79,6 @@ pub const GhostChain = struct {
     pub fn estimateFee(amount: i64) i64 {
         _ = amount;
         return 1000; // 0.001 GCC base fee
-    }
-    
-    /// Create transaction with audit trail
-    pub fn createTransactionWithAudit(allocator: Allocator, from: []const u8, to: []const u8, amount: i64, ledger: *zledger.journal.Journal) !Transaction {
-        var tx = try Transaction.init(allocator, .ghostchain, from, to, amount, "GCC");
-        
-        // Create ledger entry for audit trail
-        const ledger_tx = try zledger.tx.Transaction.init(
-            allocator,
-            amount,
-            "GCC",
-            from,
-            to,
-            "GhostChain transaction"
-        );
-        
-        // Add to audit journal
-        try ledger.append(ledger_tx);
-        
-        // Store reference to ledger entry
-        tx.ledger_entry_id = try std.fmt.allocPrint(allocator, "ledger_{d}", .{ledger_tx.id});
-        
-        return tx;
     }
 
     pub fn broadcast(transaction: Transaction) ![]const u8 {
@@ -135,21 +99,6 @@ pub const Ethereum = struct {
 
     pub fn estimateFee(gas_limit: u64, gas_price: i64) i64 {
         return @intCast(gas_limit * @as(u64, @intCast(gas_price)));
-    }
-    
-    /// Create Ethereum transaction with privacy features
-    pub fn createPrivateTransaction(allocator: Allocator, from: []const u8, to: []const u8, amount: i64, identity: *shroud.identity.Identity) !Transaction {
-        var tx = try Transaction.init(allocator, .ethereum, from, to, amount, "ETH");
-        tx.gas_limit = 21000;
-        tx.gas_price = 20000000000; // 20 gwei
-        
-        // Generate privacy token for transaction
-        const privacy_token = try identity.createAccessToken("eth_transaction", 3600);
-        
-        // Store privacy token in transaction metadata
-        tx.metadata = try std.fmt.allocPrint(allocator, "privacy_token:{s}", .{privacy_token.serialize()});
-        
-        return tx;
     }
 
     pub fn broadcast(transaction: Transaction) ![]const u8 {

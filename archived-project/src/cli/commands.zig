@@ -1,10 +1,10 @@
-//! Command-line interface for Zwallet v0.3.0
+//! Command-line interface for GhostWallet v0.3.0
 //! Enhanced with production-ready features and advanced operations
 
 const std = @import("std");
 const print = std.debug.print;
 const Allocator = std.mem.Allocator;
-const wallet = @import("../core/wallet.zig");
+const wallet = @import("../core/wallet_realid.zig");
 const transaction = @import("../protocol/transaction.zig");
 const ghostd = @import("../protocol/ghostd_integration.zig");
 const crypto = @import("../utils/crypto.zig");
@@ -152,7 +152,7 @@ pub const CLI = struct {
         self.wallet = try wallet.Wallet.create(self.allocator, "default_passphrase", mode, null);
 
         // Create default account
-        try self.wallet.?.createAccount(.ghostchain, key_type, "default");
+        _ = try self.wallet.?.createAccount(.ghostchain, key_type);
 
         print("Generated new wallet with {s} key\n", .{@tagName(key_type)});
         if (name) |n| {
@@ -215,9 +215,10 @@ pub const CLI = struct {
         }
 
         if (address) |addr| {
+            _ = addr;
             // TODO: Get balance by address instead of protocol
-            const balance = self.wallet.?.getBalance(addr, token) catch 0;
-            print("Balance: {} {s}\n", .{ balance, token });
+            const balance = self.wallet.?.getBalance(.ethereum, token);
+            print("Balance: {} {s}\n", .{ balance orelse 0, token });
         } else {
             print("Error: No accounts found\n", .{});
         }

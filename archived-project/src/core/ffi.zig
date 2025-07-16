@@ -1,15 +1,11 @@
-//! FFI (Foreign Function Interface) for exposing ZWallet to Rust/C
+//! FFI (Foreign Function Interface) for exposing GhostWallet to Rust/C
 //! This module provides C-compatible functions for integration with walletd/ghostd
-//! Now with Shroud privacy, Zsig signing, and Zledger audit trails
 
 const std = @import("std");
-const shroud = @import("shroud");
-const zsig = @import("zsig");
-const zledger = @import("zledger");
-const zwallet = @import("zwallet");
-const wallet = zwallet.wallet;
-const tx = zwallet.tx;
-const qid = zwallet.qid;
+const sigil = @import("sigil");
+const wallet = @import("wallet_realid.zig");
+const tx = @import("tx.zig");
+const qid = @import("qid.zig");
 
 // C-compatible error codes
 pub const FFI_SUCCESS: c_int = 0;
@@ -21,12 +17,9 @@ pub const FFI_ERROR_VERIFICATION_FAILED: c_int = -5;
 pub const FFI_ERROR_MEMORY_ERROR: c_int = -6;
 pub const FFI_ERROR_INVALID_ADDRESS: c_int = -7;
 pub const FFI_ERROR_ACCOUNT_NOT_FOUND: c_int = -8;
-pub const FFI_ERROR_PRIVACY_VIOLATION: c_int = -9;
-pub const FFI_ERROR_AUDIT_FAILED: c_int = -10;
-pub const FFI_ERROR_IDENTITY_EXPIRED: c_int = -11;
 
 // C-compatible structures
-pub const ZWalletContext = extern struct {
+pub const GWalletContext = extern struct {
     wallet_ptr: ?*anyopaque,
     allocator_ptr: ?*anyopaque,
     is_valid: bool,
@@ -41,30 +34,20 @@ pub const WalletAccount = extern struct {
     key_type: u32, // KeyType as integer
 };
 
-pub const ShroudIdentity = extern struct {
+pub const RealIdContext = extern struct {
     identity_ptr: ?*anyopaque,
-    did: [64]u8,
-    did_len: u32,
-    mode: u32, // IdentityMode as integer
     is_valid: bool,
-    expires_at: i64,
 };
 
-pub const LedgerEntry = extern struct {
-    id: [32]u8,
-    id_len: u32,
-    transaction_hash: [32]u8,
-    timestamp: i64,
-    amount: i64,
-    verified: bool,
+pub const ZidIdentity = extern struct {
+    public_key: [32]u8,
+    qid: [16]u8,
+    device_bound: bool,
 };
 
 pub const SignatureResult = extern struct {
     signature: [64]u8,
-    signature_len: u32,
     success: bool,
-    audit_entry_id: [32]u8,
-    audit_entry_len: u32,
 };
 
 pub const BalanceInfo = extern struct {
@@ -135,8 +118,8 @@ fn intToKeyType(value: u32) wallet.KeyType {
 // ZWallet FFI Functions
 
 /// Initialize a new wallet context
-export fn zwallet_init() ZWalletContext {
-    return ZWalletContext{
+export fn zwallet_init() GWalletContext {
+    return GWalletContext{
         .wallet_ptr = null,
         .allocator_ptr = @ptrCast(&global_allocator),
         .is_valid = true,
@@ -144,7 +127,7 @@ export fn zwallet_init() ZWalletContext {
 }
 
 /// Destroy wallet context and free resources
-export fn zwallet_destroy(ctx: *ZWalletContext) void {
+export fn zwallet_destroy(ctx: *GWalletContext) void {
     if (ctx.wallet_ptr) |ptr| {
         const wallet_ptr: *wallet.Wallet = @ptrCast(@alignCast(ptr));
         wallet_ptr.deinit();
@@ -156,7 +139,7 @@ export fn zwallet_destroy(ctx: *ZWalletContext) void {
 
 /// Create a new wallet with passphrase
 export fn zwallet_create_wallet(
-    ctx: *ZWalletContext,
+    ctx: *GWalletContext,
     passphrase: [*:0]const u8,
     passphrase_len: u32,
     wallet_name: [*:0]const u8,
@@ -185,7 +168,7 @@ export fn zwallet_create_wallet(
 
 /// Load existing wallet with passphrase
 export fn zwallet_load_wallet(
-    ctx: *ZWalletContext,
+    ctx: *GWalletContext,
     wallet_data: [*]const u8,
     data_len: u32,
     passphrase: [*:0]const u8,
@@ -211,7 +194,7 @@ export fn zwallet_load_wallet(
 
 /// Create account for specific protocol
 export fn zwallet_create_account(
-    ctx: *ZWalletContext,
+    ctx: *GWalletContext,
     protocol: u32,
     key_type: u32,
     account_out: *WalletAccount,
@@ -242,7 +225,7 @@ export fn zwallet_create_account(
 
 /// Get wallet balance for protocol and token
 export fn zwallet_get_balance(
-    ctx: *ZWalletContext,
+    ctx: *GWalletContext,
     protocol: u32,
     token: [*:0]const u8,
     token_len: u32,
@@ -265,7 +248,7 @@ export fn zwallet_get_balance(
 
 /// Update wallet balance
 export fn zwallet_update_balance(
-    ctx: *ZWalletContext,
+    ctx: *GWalletContext,
     protocol: u32,
     token: [*:0]const u8,
     token_len: u32,
@@ -286,7 +269,7 @@ export fn zwallet_update_balance(
 }
 
 /// Lock wallet
-export fn zwallet_lock(ctx: *ZWalletContext) c_int {
+export fn zwallet_lock(ctx: *GWalletContext) c_int {
     if (!ctx.is_valid or ctx.wallet_ptr == null) return FFI_ERROR_INVALID_PARAM;
 
     const wallet_ptr: *wallet.Wallet = @ptrCast(@alignCast(ctx.wallet_ptr.?));
@@ -297,7 +280,7 @@ export fn zwallet_lock(ctx: *ZWalletContext) c_int {
 
 /// Unlock wallet with passphrase
 export fn zwallet_unlock(
-    ctx: *ZWalletContext,
+    ctx: *GWalletContext,
     passphrase: [*:0]const u8,
     passphrase_len: u32,
 ) c_int {
@@ -315,7 +298,7 @@ export fn zwallet_unlock(
 
 /// Get master QID
 export fn zwallet_get_master_qid(
-    ctx: *ZWalletContext,
+    ctx: *GWalletContext,
     qid_out: *[16]u8,
 ) c_int {
     if (!ctx.is_valid or ctx.wallet_ptr == null) return FFI_ERROR_INVALID_PARAM;
@@ -330,35 +313,102 @@ export fn zwallet_get_master_qid(
     return FFI_ERROR_INVALID_PARAM;
 }
 
-// Shroud Identity FFI Functions (replacing RealID)
+// RealID FFI Functions
 
-/// Initialize Shroud identity context
-export fn shroud_identity_init() ShroudIdentity {
-    return ShroudIdentity{
+/// Initialize RealID context
+export fn realid_init() RealIdContext {
+    return RealIdContext{
         .identity_ptr = null,
-        .did = std.mem.zeroes([64]u8),
-        .did_len = 0,
-        .mode = 0, // persistent
         .is_valid = true,
-        .expires_at = 0,
     };
 }
 
-/// Destroy Shroud identity context
-export fn shroud_identity_destroy(ctx: *ShroudIdentity) void {
+/// Destroy RealID context
+export fn realid_destroy(ctx: *RealIdContext) void {
     if (ctx.identity_ptr) |ptr| {
-        const identity_ptr: *shroud.identity.Identity = @ptrCast(@alignCast(ptr));
-        identity_ptr.deinit();
+        const identity_ptr: *sigil.RealIDKeyPair = @ptrCast(@alignCast(ptr));
+        // Securely clear sensitive data
+        std.crypto.utils.secureZero(u8, &identity_ptr.private_key.bytes);
         global_allocator.destroy(identity_ptr);
         ctx.identity_ptr = null;
     }
     ctx.is_valid = false;
 }
 
-// TODO: Implement Shroud identity generation functions
-// The following functions need to be rewritten for Shroud instead of RealID
+/// Generate RealID identity from passphrase
+export fn realid_generate_identity(
+    ctx: *RealIdContext,
+    passphrase: [*:0]const u8,
+    passphrase_len: u32,
+    device_bound: bool,
+    identity_out: *ZidIdentity,
+) c_int {
+    if (!ctx.is_valid) return FFI_ERROR_INVALID_PARAM;
 
-// Temporarily removed problematic functions - need to reimplement with Shroud
+    const pass_slice = passphrase[0..passphrase_len];
+
+    const identity = if (device_bound) blk: {
+        const device_fp = sigil.generate_device_fingerprint(global_allocator) catch {
+            return FFI_ERROR_MEMORY_ERROR;
+        };
+        break :blk sigil.realid_generate_from_passphrase_with_device(pass_slice, device_fp) catch {
+            return FFI_ERROR_SIGNING_FAILED;
+        };
+    } else sigil.realid_generate_from_passphrase(pass_slice) catch {
+        return FFI_ERROR_SIGNING_FAILED;
+    };
+
+    // Store identity
+    const identity_ptr = global_allocator.create(sigil.RealIDKeyPair) catch {
+        return FFI_ERROR_MEMORY_ERROR;
+    };
+    identity_ptr.* = identity;
+    ctx.identity_ptr = @ptrCast(identity_ptr);
+
+    // Fill output structure
+    identity_out.public_key = identity.public_key.bytes;
+    identity_out.qid = qid.QID.fromPublicKey(identity.public_key.bytes).bytes;
+    identity_out.device_bound = device_bound;
+
+    return FFI_SUCCESS;
+}
+
+/// Sign data with RealID
+export fn realid_sign_data(
+    ctx: *RealIdContext,
+    data: [*]const u8,
+    data_len: u32,
+    signature_out: *SignatureResult,
+) c_int {
+    if (!ctx.is_valid or ctx.identity_ptr == null) return FFI_ERROR_INVALID_PARAM;
+
+    const identity_ptr: *sigil.RealIDKeyPair = @ptrCast(@alignCast(ctx.identity_ptr.?));
+    const data_slice = data[0..data_len];
+
+    const signature = sigil.realid_sign(data_slice, identity_ptr.private_key) catch {
+        signature_out.success = false;
+        return FFI_ERROR_SIGNING_FAILED;
+    };
+
+    signature_out.signature = signature.bytes;
+    signature_out.success = true;
+
+    return FFI_SUCCESS;
+}
+
+/// Verify signature with RealID
+export fn realid_verify_signature(
+    public_key: *const [32]u8,
+    data: [*]const u8,
+    data_len: u32,
+    signature: *const [64]u8,
+) bool {
+    const data_slice = data[0..data_len];
+    const pubkey = sigil.RealIDPublicKey{ .bytes = public_key.* };
+    const sig = sigil.RealIDSignature{ .bytes = signature.* };
+
+    return sigil.realid_verify(sig, data_slice, pubkey);
+}
 
 /// Convert QID to string
 export fn qid_to_string(
@@ -425,7 +475,46 @@ test "FFI wallet operations" {
     try std.testing.expect(account.key_type == 0);
 }
 
-// TODO: Implement Shroud-based tests
-// test "FFI Shroud operations" {
-//     // Implementation needed for Shroud identity functions
-// }
+test "FFI RealID operations" {
+    var ctx = realid_init();
+    defer realid_destroy(&ctx);
+
+    // Generate identity
+    const passphrase = "ffi_realid_test";
+    var identity: ZidIdentity = undefined;
+
+    const gen_result = realid_generate_identity(
+        &ctx,
+        passphrase.ptr,
+        passphrase.len,
+        false,
+        &identity,
+    );
+
+    try std.testing.expect(gen_result == FFI_SUCCESS);
+    try std.testing.expect(!identity.device_bound);
+
+    // Sign and verify
+    const test_data = "Hello from FFI!";
+    var signature: SignatureResult = undefined;
+
+    const sign_result = realid_sign_data(
+        &ctx,
+        test_data.ptr,
+        test_data.len,
+        &signature,
+    );
+
+    try std.testing.expect(sign_result == FFI_SUCCESS);
+    try std.testing.expect(signature.success);
+
+    // Verify signature
+    const verify_result = realid_verify_signature(
+        &identity.public_key,
+        test_data.ptr,
+        test_data.len,
+        &signature.signature,
+    );
+
+    try std.testing.expect(verify_result);
+}

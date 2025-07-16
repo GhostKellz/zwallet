@@ -1,26 +1,26 @@
-//! Example usage of Zwallet library
+//! Example usage of GhostWallet library
 //! Demonstrates core wallet functionality
 
 const std = @import("std");
-const zwallet = @import("zwallet");
+const gwallet = @import("gwallet");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    std.debug.print("=== Zwallet Example ===\n\n", .{});
+    std.debug.print("=== GhostWallet Example ===\n\n", .{});
 
     // 1. Create a new wallet
     std.debug.print("1. Creating new wallet...\n", .{});
-    var wallet = try zwallet.createWallet(allocator, "test_passphrase_123", .hybrid);
+    var wallet = try gwallet.createWallet(allocator, "test_passphrase_123", .hybrid);
     defer wallet.deinit();
 
     // 2. Create accounts for different protocols
     std.debug.print("2. Creating accounts...\n", .{});
-    try wallet.createAccount(.ghostchain, .ed25519, "Main Account");
-    try wallet.createAccount(.ethereum, .secp256k1, "ETH Account");
-    try wallet.createAccount(.stellar, .ed25519, "XLM Account");
+    _ = try wallet.createAccount(.ghostchain, .ed25519);
+    _ = try wallet.createAccount(.ethereum, .secp256k1);
+    _ = try wallet.createAccount(.stellar, .ed25519);
 
     std.debug.print("   Created {} accounts\n", .{wallet.accounts.items.len});
 

@@ -1,6 +1,6 @@
 //! Core wallet functionality with RealID integration
 const std = @import("std");
-const realid = @import("realid");
+const sigil = @import("sigil");
 const qid = @import("qid.zig");
 const tx = @import("tx.zig");
 
@@ -76,7 +76,7 @@ pub const WalletMetadata = struct {
 
 pub const Account = struct {
     address: []const u8,
-    public_key: realid.RealIDPublicKey,
+    public_key: sigil.RealIDPublicKey,
     key_type: KeyType,
     protocol: Protocol,
     qid: qid.QID,
@@ -98,7 +98,7 @@ pub const Account = struct {
 
 pub const Wallet = struct {
     allocator: std.mem.Allocator,
-    realid_identity: ?realid.RealIDKeyPair,
+    realid_identity: ?sigil.RealIDKeyPair,
     master_qid: ?qid.QID,
     mode: WalletMode,
     is_locked: bool,
@@ -113,9 +113,9 @@ pub const Wallet = struct {
     pub fn create(allocator: std.mem.Allocator, passphrase: []const u8, mode: WalletMode, name: ?[]const u8) !Self {
         // Generate RealID identity
         const identity = if (mode == .device_bound) blk: {
-            const device_fp = try realid.generate_device_fingerprint(allocator);
-            break :blk try realid.realid_generate_from_passphrase_with_device(passphrase, device_fp);
-        } else try realid.realid_generate_from_passphrase(passphrase);
+            const device_fp = try sigil.generate_device_fingerprint(allocator);
+            break :blk try sigil.realid_generate_from_passphrase_with_device(passphrase, device_fp);
+        } else try sigil.realid_generate_from_passphrase(passphrase);
 
         // Generate master QID from public key
         const wallet_qid = qid.QID.fromPublicKey(identity.public_key.bytes);
@@ -159,12 +159,12 @@ pub const Wallet = struct {
     pub fn fromMnemonic(allocator: std.mem.Allocator, mnemonic: []const u8, password: ?[]const u8, mode: WalletMode) !Self {
         // In a real implementation, this would derive keys from mnemonic
         // For now, use the mnemonic as passphrase (with optional password)
-        const passphrase = if (password) |pwd| 
-            try std.fmt.allocPrint(allocator, "{s}:{s}", .{mnemonic, pwd})
-        else 
+        const passphrase = if (password) |pwd|
+            try std.fmt.allocPrint(allocator, "{s}:{s}", .{ mnemonic, pwd })
+        else
             try allocator.dupe(u8, mnemonic);
         defer allocator.free(passphrase);
-        
+
         return Self.create(allocator, passphrase, mode, "imported_wallet");
     }
 
@@ -197,9 +197,9 @@ pub const Wallet = struct {
 
         // Regenerate RealID identity from passphrase
         const identity = if (self.metadata.device_bound) blk: {
-            const device_fp = try realid.generate_device_fingerprint(self.allocator);
-            break :blk try realid.realid_generate_from_passphrase_with_device(passphrase, device_fp);
-        } else try realid.realid_generate_from_passphrase(passphrase);
+            const device_fp = try sigil.generate_device_fingerprint(self.allocator);
+            break :blk try sigil.realid_generate_from_passphrase_with_device(passphrase, device_fp);
+        } else try sigil.realid_generate_from_passphrase(passphrase);
 
         self.realid_identity = identity;
         self.is_locked = false;
@@ -233,7 +233,7 @@ pub const Wallet = struct {
             },
             .stellar, .hedera => {
                 // Use public key directly for these protocols
-                const pubkey_hex = try std.fmt.allocPrint(self.allocator, "{}", .{std.fmt.fmtSliceHexLower(&identity.public_key.bytes)});
+                const pubkey_hex = try std.fmt.allocPrint(self.allocator, "{x}", .{identity.public_key.bytes});
                 return pubkey_hex;
             },
         }
@@ -310,7 +310,7 @@ pub const Wallet = struct {
     }
 
     /// Get RealID identity
-    pub fn getRealIdIdentity(self: *const Self) !realid.RealIDKeyPair {
+    pub fn getRealIdIdentity(self: *const Self) !sigil.RealIDKeyPair {
         if (self.is_locked) return WalletError.WalletLocked;
         if (self.realid_identity) |identity| {
             return identity;
@@ -319,7 +319,7 @@ pub const Wallet = struct {
     }
 
     /// Derive Ethereum address from public key
-    fn deriveEthereumAddress(self: *const Self, public_key: realid.RealIDPublicKey) ![]const u8 {
+    fn deriveEthereumAddress(self: *const Self, public_key: sigil.RealIDPublicKey) ![]const u8 {
         // Ethereum address is last 20 bytes of Keccak256(public_key)
         var hasher = std.crypto.hash.sha3.Keccak256.init(.{});
         hasher.update(&public_key.bytes);
@@ -328,11 +328,11 @@ pub const Wallet = struct {
 
         // Take last 20 bytes and format as hex with 0x prefix
         const addr_bytes = hash[12..32];
-        return try std.fmt.allocPrint(self.allocator, "0x{}", .{std.fmt.fmtSliceHexLower(addr_bytes)});
+        return try std.fmt.allocPrint(self.allocator, "0x{x}", .{addr_bytes});
     }
 
     /// Derive Bitcoin address from public key
-    fn deriveBitcoinAddress(self: *const Self, public_key: realid.RealIDPublicKey) ![]const u8 {
+    fn deriveBitcoinAddress(self: *const Self, public_key: sigil.RealIDPublicKey) ![]const u8 {
         // Simplified Bitcoin address derivation (P2PKH)
         // Real implementation would use proper Base58Check encoding
         var hasher = std.crypto.hash.sha2.Sha256.init(.{});
@@ -340,7 +340,7 @@ pub const Wallet = struct {
         var hash: [32]u8 = undefined;
         hasher.final(&hash);
 
-        return try std.fmt.allocPrint(self.allocator, "bc1q{}", .{std.fmt.fmtSliceHexLower(hash[0..20])});
+        return try std.fmt.allocPrint(self.allocator, "bc1q{x}", .{hash[0..20]});
     }
 
     pub fn deinit(self: *Self) void {
