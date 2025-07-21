@@ -13,7 +13,7 @@
   - Implement BIP-32 key derivation in `src/utils/crypto.zig:240`
   - Replace placeholder BIP-39 implementation with zcrypto v0.3.0 in `src/utils/crypto.zig:288,297`
   - Update keystore encryption to use zcrypto AES-256-CTR in `src/utils/keystore.zig:230,245,257`
-- **Files**: `src/utils/crypto.zig`, `src/utils/keystore.zig`
+- **Files**: `src/utils/crypto.zig`, `src/utils/keystore.zig` 
 
 ### 3. Implement Transaction Signing
 - **Issue**: Core transaction signing uses placeholder implementation
@@ -116,7 +116,7 @@
 ## Development Notes
 
 **Dependencies Status:**
-- zcrypto: v0.8.3 (main branch)
+- zcrypto: v0.8.4 (main branch)
 - zsync: v0.3.2 (async runtime, lazy loaded)
 - realid: Not in build.zig.zon (commented out in build.zig)
 - zsig: Not in build.zig.zon (commented out in build.zig)
