@@ -14,12 +14,12 @@
             .hash = "zsig-0.5.0-hyAVHaNQAgBSQccIM9Zs0x96VERjNPXliiuuwmXr3FZh",
         },
         .zledger = .{
-            .url = "https://github.com/ghostkellz/zledger/archive/refs/heads/main.tar.gz",
-            .hash = "zledger-0.3.2-gtTGiANpAgAfvNn_tLUwfCsh_scPhgKy30EXGcXnKjPL",
+            .url = "https://github.com/ghostkellz/zledger/archive/main.tar.gz",
+            .hash = "zledger-0.3.2-gtTGiFdjAgClumjsj0EmGpOjiR9rpCNm83sbK4rP1nVU",
         },
         .shroud = .{
-            .url = "https://github.com/ghostkellz/shroud/archive/refs/heads/main.tar.gz",
-            .hash = "shroud-1.2.0-7bM0UU5gAgDz5_6Lv88eYw1jsVyqPCSZmG26DxAlp4Uq",
+            .url = "https://github.com/ghostkellz/shroud/archive/main.tar.gz",
+            .hash = "shroud-1.2.3-z7C8mbkLBQAWkrWAGcZpLI1ySO4_ciBrdiDYOyHdD2g0",
         },
     },
 
